@@ -51,7 +51,10 @@ TEST(Core, ArenaAllocFree) {
     Arena arena;
     arena_init(&arena, 10);
     i32* i32_ptr = arena_alloc<i32>(&arena, 2);
+    assert(i32_ptr != nullptr);
+
     i32* i32_ptr2 = arena_alloc<i32>(&arena, 2);
+    assert(i32_ptr2 != nullptr);
 
     arena_free(&arena);
 

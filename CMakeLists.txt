@@ -5,6 +5,7 @@ project(jazz)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_BUILD_TYPE Debug)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -22,17 +23,28 @@ add_executable(
   ./src/core.hpp
   ./src/tokenizer.hpp
   ./src/tokenizer.cpp
+  ./src/ast.hpp
+  ./src/ast.cpp
+  ./src/parser.hpp
+  ./src/parser.cpp
   ./src/main.cpp
 )
+target_compile_options(jazz PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(
   jazz_test
   ./src/core.hpp
   ./src/tokenizer.hpp
   ./src/tokenizer.cpp
+  ./src/ast.hpp
+  ./src/ast.cpp
+  ./src/parser.hpp
+  ./src/parser.cpp
   ./tests/core_test.cpp
   ./tests/tokenizer_test.cpp
+  ./tests/parser_test.cpp
 )
+target_compile_options(jazz_test PRIVATE -Wall -Wextra -Wpedantic)
 
 target_include_directories(
   jazz_test PRIVATE src

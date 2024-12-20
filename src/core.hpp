@@ -176,3 +176,50 @@ inline String string_substr(String str, isize start, isize count) {
 
     return String{str.data + start, count};
 }
+
+/// ------------------
+/// Array
+/// ------------------
+
+template <typename T> struct Array {
+    Arena* arena;
+    T* data;
+    isize size;
+    isize capacity;
+
+    T& operator[](isize index) {
+        assert(index >= 0);
+        assert(index < size);
+        return data[index];
+    }
+
+    const T& operator[](isize index) const {
+        assert(index >= 0);
+        assert(index < size);
+        return data[index];
+    }
+};
+
+template <typename T>
+inline Array<T> array_make(isize initial_capacity, Arena* arena) {
+    Array<T> array = {};
+    array->arena = arena;
+    array->data = arena_alloc<T>(arena, initial_capacity);
+    array->size = 0;
+    array->capacity = initial_capacity;
+}
+
+template <typename T> inline void array_push(Array<T>* array, T value) {
+    assert(array->size <= array->capacity);
+
+    if (array->size == array->capacity) {
+        isize new_capacity = array->capacity * 2;
+        T* new_data = arena_alloc<T>(array->arena, new_capacity);
+        memcpy(new_data, array->data, sizeof(T) * array->size);
+        array->data = new_data;
+        array->capacity = new_capacity;
+    }
+
+    array->data[array->size] = value;
+    array->size += 1;
+}

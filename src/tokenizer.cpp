@@ -277,6 +277,16 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
                 break;
             }
 
+            if (result.token.source == "else") {
+                result.token.kind = TokenKind::Else;
+                break;
+            }
+
+            if (result.token.source == "for") {
+                result.token.kind = TokenKind::For;
+                break;
+            }
+
             break;
         }
 

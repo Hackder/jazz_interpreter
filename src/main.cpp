@@ -31,7 +31,7 @@ String read_file(Arena* arena, const char* file_name) {
     }
     buffer[file_size] = '\0';
 
-    return String{buffer, file_size};
+    return String{.data = buffer, .size = file_size};
 }
 
 int main(int argc, char* argv[]) {
@@ -46,6 +46,8 @@ int main(int argc, char* argv[]) {
 
     const char* source_file = argv[1];
     String source_code = read_file(&arena, source_file);
+
+    std::cout << source_code << std::endl;
 
     return 0;
 }

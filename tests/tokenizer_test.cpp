@@ -1,4 +1,3 @@
-#include "core.hpp"
 #include "tokenizer.hpp"
 #include <gtest/gtest.h>
 
@@ -341,4 +340,19 @@ TEST(Tokenizer, ReadToken) {
     EXPECT_EQ(result.error, TokenizerErrorKind::None);
     EXPECT_EQ(result.token.kind, TokenKind::Eof);
     EXPECT_EQ(result.token.source, string_from_cstr(""));
+}
+
+TEST(Tokenizer, Errors) {
+    Tokenizer tokenizer;
+    tokenzier_init(&tokenizer, string_from_cstr("asdf~"));
+
+    TokenizerResult result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Identifier);
+    EXPECT_EQ(result.token.source, string_from_cstr("asdf"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::InvalidCharacter);
+    EXPECT_EQ(result.token.kind, TokenKind::Invalid);
+    EXPECT_EQ(result.token.source, string_from_cstr("~"));
 }
