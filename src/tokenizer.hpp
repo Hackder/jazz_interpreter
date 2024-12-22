@@ -12,21 +12,14 @@ enum class TokenKind {
     If,
     Else,
     For,
+    Break,
+    Continue,
 
     // Literals
     Integer, // 1, 2, 3, ...
     String,  // "hello", "world", ...
 
     // Operators
-    LParen,       // (
-    RParen,       // )
-    LBrace,       // {
-    RBrace,       // }
-    LBracket,     // [
-    RBracket,     // ]
-    Assign,       // =
-    Colon,        // :
-    Period,       // .
     Plus,         // +
     Minus,        // -
     Asterisk,     // *
@@ -42,8 +35,20 @@ enum class TokenKind {
     LogicalAnd,   // &&
     LogicalOr,    // ||
     Bang,         // !
-    Comma,        // ,
-    Arrow,        // ->
+    Period,       // .
+    Assign,       // =
+
+    // Other
+    Arrow,     // ->
+    Comma,     // ,
+    Colon,     // :
+    LParen,    // (
+    RParen,    // )
+    LBrace,    // {
+    RBrace,    // }
+    LBracket,  // [
+    RBracket,  // ]
+    Semicolon, // ;
 
 };
 
@@ -89,7 +94,7 @@ struct TokenizerResult {
     Token token;
 };
 
-void tokenzier_init(Tokenizer* tokenizer, String source);
+void tokenizer_init(Tokenizer* tokenizer, String source);
 TokenizerResult tokenizer_next_token(Tokenizer* tokenizer);
 
 // Only used for gtest to print TokenKind
@@ -202,6 +207,15 @@ inline std::ostream& operator<<(std::ostream& os, TokenKind kind) {
         break;
     case TokenKind::Arrow:
         os << "Arrow";
+        break;
+    case TokenKind::Semicolon:
+        os << "Semicolon";
+        break;
+    case TokenKind::Break:
+        os << "Break";
+        break;
+    case TokenKind::Continue:
+        os << "Continue";
         break;
     }
     return os;

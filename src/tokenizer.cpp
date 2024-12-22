@@ -1,7 +1,7 @@
 #include "tokenizer.hpp"
 #include "core.hpp"
 
-void tokenzier_init(Tokenizer* tokenizer, String source) {
+void tokenizer_init(Tokenizer* tokenizer, String source) {
     tokenizer->source = source;
     tokenizer->position = 0;
     tokenizer->read_position = 0;
@@ -103,6 +103,7 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
     core_assert(tokenizer->position <= tokenizer->source.size);
     core_assert(tokenizer->read_position == tokenizer->position);
 
+    skip_whitespace(tokenizer);
     if (tokenizer->position >= tokenizer->source.size) {
         return TokenizerResult{.error = TokenizerErrorKind::None,
                                .token = Token{
@@ -110,8 +111,6 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
                                    .source = {.data = nullptr, .size = 0},
                                }};
     }
-
-    skip_whitespace(tokenizer);
 
     TokenizerResult result = {};
     result.error = TokenizerErrorKind::None;
@@ -203,6 +202,10 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
         result.token.kind = TokenKind::Comma;
         break;
     }
+    case ';': {
+        result.token.kind = TokenKind::Semicolon;
+        break;
+    }
     case '<': {
         if (tokenizer->read_position < tokenizer->source.size &&
             tokenizer->source[tokenizer->read_position] == '=') {
@@ -211,7 +214,6 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
             tokenizer->read_position += 1;
             break;
         }
-
         result.token.kind = TokenKind::LessThan;
         break;
     }
@@ -296,6 +298,16 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
 
             if (result.token.source == "for") {
                 result.token.kind = TokenKind::For;
+                break;
+            }
+
+            if (result.token.source == "break") {
+                result.token.kind = TokenKind::Break;
+                break;
+            }
+
+            if (result.token.source == "continue") {
+                result.token.kind = TokenKind::Continue;
                 break;
             }
 

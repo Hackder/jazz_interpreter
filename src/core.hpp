@@ -325,9 +325,28 @@ inline void ring_buffer_push_end(RingBuffer<T>* ring_buffer, T value) {
     core_assert(ring_buffer->capacity > 0);
     core_assert(ring_buffer->data);
 
-    core_assert_msg(ring_buffer->size < ring_buffer->capacity,
-                    "%ld >= %ld ring_buffer cannot grow ", ring_buffer->size,
-                    ring_buffer->capacity);
+    // Grow
+    if (ring_buffer->size == ring_buffer->capacity) {
+        isize new_capacity = ring_buffer->capacity * 2;
+        T* new_data = arena_alloc<T>(ring_buffer->arena, new_capacity);
+
+        isize head = ring_buffer->head;
+        isize tail = ring_buffer->tail;
+
+        if (head < tail) {
+            memcpy(new_data, ring_buffer->data + head,
+                   sizeof(T) * (tail - head));
+        } else {
+            isize first_size = ring_buffer->capacity - head;
+            memcpy(new_data, ring_buffer->data + head, sizeof(T) * first_size);
+            memcpy(new_data + first_size, ring_buffer->data, sizeof(T) * tail);
+        }
+
+        ring_buffer->data = new_data;
+        ring_buffer->capacity = new_capacity;
+        ring_buffer->head = 0;
+        ring_buffer->tail = ring_buffer->size;
+    }
 
     ring_buffer->size += 1;
     if (ring_buffer->tail == ring_buffer->capacity) {

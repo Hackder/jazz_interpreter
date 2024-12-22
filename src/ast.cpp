@@ -55,6 +55,10 @@ std::ostream& operator<<(std::ostream& os, AstNodeKind kind) {
 }
 
 void ast_serialize_debug_rec(AstNode* node, std::ostream& stream) {
+    if (node == nullptr) {
+        return;
+    }
+
     switch (node->kind) {
     case AstNodeKind::Literal: {
         stream << "Lit(";
@@ -99,29 +103,45 @@ void ast_serialize_debug_rec(AstNode* node, std::ostream& stream) {
     case AstNodeKind::If: {
         stream << "If(";
         ast_serialize_debug_rec(node->as_if()->condition, stream);
-        stream << " ";
+        stream << " then ";
         ast_serialize_debug_rec(node->as_if()->then_branch, stream);
         if (node->as_if()->else_branch) {
-            stream << " ";
+            stream << " else ";
             ast_serialize_debug_rec(node->as_if()->else_branch, stream);
         }
         stream << ")";
         break;
     }
     case AstNodeKind::For: {
+        AstNodeFor* for_node = node->as_for();
         stream << "For(";
-        ast_serialize_debug_rec(node->as_for()->init, stream);
-        stream << " ";
-        ast_serialize_debug_rec(node->as_for()->condition, stream);
-        stream << " ";
-        ast_serialize_debug_rec(node->as_for()->update, stream);
-        stream << " ";
-        ast_serialize_debug_rec(node->as_for()->then_branch, stream);
+        if (for_node->init) {
+            ast_serialize_debug_rec(for_node->init, stream);
+            stream << " ";
+        }
+        if (for_node->condition) {
+            ast_serialize_debug_rec(for_node->condition, stream);
+            stream << " ";
+        }
+        if (for_node->update) {
+            ast_serialize_debug_rec(for_node->update, stream);
+            stream << " ";
+        }
+        stream << "then ";
+        ast_serialize_debug_rec(for_node->then_branch, stream);
+        if (for_node->else_branch) {
+            stream << " else ";
+            ast_serialize_debug_rec(for_node->else_branch, stream);
+        }
         stream << ")";
         break;
     }
     case AstNodeKind::Break: {
-        stream << "Break";
+        stream << "Break(";
+        if (node->as_break()->value) {
+            ast_serialize_debug_rec(node->as_break()->value, stream);
+        }
+        stream << ")";
         break;
     }
     case AstNodeKind::Continue: {

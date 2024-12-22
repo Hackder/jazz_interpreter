@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "core.hpp"
+#include <iostream>
 
 Token peek_token(AstFile* file, isize index = 1) {
     core_assert(index > 0);
@@ -84,6 +85,14 @@ isize operator_precedence(Token tok) {
 
 AstNode* parse_expression(AstFile* file, Arena* arena);
 
+void skip_newlines(AstFile* file) {
+    Token tok = peek_token(file);
+    while (tok.kind == TokenKind::Newline) {
+        next_token(file);
+        tok = peek_token(file);
+    }
+}
+
 AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
     core_assert(tok.kind == TokenKind::LBrace);
@@ -106,6 +115,7 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
     }
 
     tok = next_token(file);
+    skip_newlines(file);
     core_assert(tok.kind == TokenKind::RBrace);
 
     return AstNodeBlock::make(statements, tok, arena);
@@ -169,6 +179,7 @@ AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
 // This includes literals, identifiers, unary operators, and more complex
 // expressions.
 AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
+    skip_newlines(file);
     Token tok = peek_token(file);
     switch (tok.kind) {
     case TokenKind::Integer: {
@@ -216,22 +227,88 @@ AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
         Token tok = next_token(file);
         AstNode* condition = parse_expression(file, arena);
         AstNode* then_branch = parse_block(file, arena);
+
+        AstNode* else_branch = nullptr;
+        Token next = peek_token(file);
+        if (next.kind == TokenKind::Else) {
+            next_token(file);
+            else_branch = parse_block(file, arena);
+        }
+
+        return AstNodeIf::make(condition, then_branch, else_branch, tok, arena);
     }
-    case TokenKind::For:
+    case TokenKind::For: {
+        Token tok = next_token(file);
+        Token next = peek_token(file);
+        AstNode* init = nullptr;
+        AstNode* condition = nullptr;
+        AstNode* update = nullptr;
+
+        bool infinite_loop = next.kind == TokenKind::LBrace;
+        if (!infinite_loop) {
+            isize number_of_semicolons = 0;
+            for (isize i = 1; true; i++) {
+                Token next = peek_token(file, i);
+                if (next.kind == TokenKind::Semicolon) {
+                    number_of_semicolons++;
+                }
+
+                if (next.kind == TokenKind::Newline) {
+                    break;
+                }
+
+                if (next.kind == TokenKind::LBrace) {
+                    break;
+                }
+
+                if (next.kind == TokenKind::Eof) {
+                    core_assert(false);
+                }
+            }
+
+            if (number_of_semicolons == 2) {
+                init = parse_statement(file, arena);
+                Token tok = next_token(file);
+                core_assert(tok.kind == TokenKind::Semicolon);
+                condition = parse_expression(file, arena);
+                tok = next_token(file);
+                core_assert(tok.kind == TokenKind::Semicolon);
+                update = parse_statement(file, arena);
+            }
+
+            if (number_of_semicolons == 0) {
+                condition = parse_expression(file, arena);
+            }
+        }
+
+        AstNodeBlock* then_branch = parse_block(file, arena);
+
+        AstNodeBlock* else_branch = nullptr;
+        next = peek_token(file);
+        if (next.kind == TokenKind::Else) {
+            next_token(file);
+            else_branch = parse_block(file, arena);
+        }
+
+        return AstNodeFor::make(init, condition, update, then_branch,
+                                else_branch, tok, arena);
+    }
     case TokenKind::Func: {
         return parse_function_expression(file, arena);
     }
     // Invalid
-    default:
+    default: {
+        std::cerr << "Unexpected token: " << tok.source << std::endl;
         core_assert(false);
+    }
     }
 }
 
 AstNode* parse_expression_rec(AstFile* file, isize precedence, Arena* arena) {
     AstNode* left = parse_expression_operand(file, arena);
 
-    bool valid = true;
-    while (valid) {
+    while (true) {
+        skip_newlines(file);
         Token tok = peek_token(file);
         if (!is_binary_operator(tok)) {
             break;
@@ -289,7 +366,9 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
     core_assert(file);
     core_assert(arena);
 
+    skip_newlines(file);
     Token tok = peek_token(file);
+
     switch (tok.kind) {
     case TokenKind::Identifier: {
         if (peek_token(file, 2).kind == TokenKind::Colon) {
@@ -310,18 +389,24 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
 
         return parse_expression(file, arena);
     }
-    case TokenKind::LParen:
+    case TokenKind::Break: {
+        next_token(file);
+        AstNode* value = parse_expression(file, arena);
+        return AstNodeBreak::make(value, tok, arena);
+    }
+    case TokenKind::Continue: {
+        next_token(file);
+        return AstNodeContinue::make(tok, arena);
+    }
+    case TokenKind::LParen: {
         return parse_expression(file, arena);
-    case TokenKind::LBrace:
+    }
+    case TokenKind::LBrace: {
         return parse_block(file, arena);
-    case TokenKind::If:
-        return nullptr;
-    case TokenKind::For:
-        return nullptr;
-    case TokenKind::Func:
-        return nullptr;
-    default:
+    }
+    default: {
         return parse_expression(file, arena);
+    }
     }
 }
 

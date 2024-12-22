@@ -4,14 +4,14 @@
 
 AstFile* setup_ast_file(const char* source, Arena* arena) {
     Tokenizer tokenizer;
-    tokenzier_init(&tokenizer, string_from_cstr(source));
+    tokenizer_init(&tokenizer, string_from_cstr(source));
 
     AstFile* file = ast_file_make(tokenizer, 16, arena);
 
     return file;
 }
 
-TEST(Parser, ParseExprNumbersOnly) {
+TEST(Parser, ExprNumbersOnly) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -22,7 +22,7 @@ TEST(Parser, ParseExprNumbersOnly) {
     EXPECT_STREQ(ast.data, "Bin(Bin(Lit(1) + Lit(2)) + Lit(3))");
 }
 
-TEST(Parser, ParseExprNumbersAndParens) {
+TEST(Parser, ExprNumbersAndParens) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -33,7 +33,7 @@ TEST(Parser, ParseExprNumbersAndParens) {
     EXPECT_STREQ(ast.data, "Bin(Lit(1) + Bin(Lit(2) + Lit(3)))");
 }
 
-TEST(Parser, ParseExprUnary) {
+TEST(Parser, ExprUnary) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -46,7 +46,7 @@ TEST(Parser, ParseExprUnary) {
         "Bin(Bin(Unary(- Lit(1)) + Unary(+ Lit(2))) - Unary(- Lit(3)))");
 }
 
-TEST(Parser, ParseExprCorrectPrecedence) {
+TEST(Parser, ExprCorrectPrecedence) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -58,7 +58,7 @@ TEST(Parser, ParseExprCorrectPrecedence) {
                            "Lit(3)) - Bin(Lit(1) / Lit(3))) + Lit(2))");
 }
 
-TEST(Parser, ParseExprIdent) {
+TEST(Parser, ExprIdent) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -70,7 +70,7 @@ TEST(Parser, ParseExprIdent) {
                            "Bin(Ident(thing) - Ident(b))))");
 }
 
-TEST(Parser, ParseDeclSimpleVariable) {
+TEST(Parser, DeclSimpleVariable) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -81,7 +81,7 @@ TEST(Parser, ParseDeclSimpleVariable) {
     EXPECT_STREQ(ast.data, "Decl(thing := Lit(1))");
 }
 
-TEST(Parser, ParseDeclSimpleConstant) {
+TEST(Parser, DeclSimpleConstant) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -92,7 +92,7 @@ TEST(Parser, ParseDeclSimpleConstant) {
     EXPECT_STREQ(ast.data, "Decl(thing :: Lit(1))");
 }
 
-TEST(Parser, ParserDeclSimpleFunction) {
+TEST(Parser, DeclSimpleFunction) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -105,7 +105,7 @@ TEST(Parser, ParserDeclSimpleFunction) {
                            "Block(Bin(Lit(1) + Lit(2)))))");
 }
 
-TEST(Parser, ParserDeclSimpleFunctionReturnType) {
+TEST(Parser, DeclSimpleFunctionReturnType) {
     Arena arena;
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
@@ -119,4 +119,100 @@ TEST(Parser, ParserDeclSimpleFunctionReturnType) {
         ast.data,
         "Decl(main :: Func(fn -> Ident(int), Param(para) Param(another) "
         "Block(Bin(Ident(para) + Ident(another)))))");
+}
+
+TEST(Parser, ForExpr) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = "for i := 0; i < 10; i = i + 1 { 1 + 2 }";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "For(Decl(i := Lit(0)) Bin(Ident(i) < Lit(10)) "
+        "Assign(i Bin(Ident(i) + Lit(1))) then Block(Bin(Lit(1) + Lit(2))))");
+}
+
+TEST(Parser, ForExprWithElse) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        for i := 0; i < 10; i = i + 1 {
+            break 1 + 2
+        } else {
+            3
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "For(Decl(i := Lit(0)) Bin(Ident(i) < Lit(10)) "
+                 "Assign(i Bin(Ident(i) + Lit(1))) then "
+                 "Block(Break(Bin(Lit(1) + Lit(2)))) else Block(Lit(3)))");
+}
+
+TEST(Parser, IfExpr) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        if i + 2 == 3 {
+            1 + 2
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "If(Bin(Bin(Ident(i) + Lit(2)) == Lit(3)) then Block(Bin(Lit(1) + "
+        "Lit(2))))");
+}
+
+TEST(Parser, IfExprWithElse) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        if i + 2 == 3 {
+            1 + 2
+        } else {
+            hello
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "If(Bin(Bin(Ident(i) + Lit(2)) == Lit(3)) then Block(Bin(Lit(1) + "
+        "Lit(2))) else Block(Ident(hello)))");
+}
+
+TEST(Parser, IfExprWithElseAssigned) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        value := if i + 2 == 3 {
+            1 + 2
+        } else {
+            hello
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Decl(value := If(Bin(Bin(Ident(i) + Lit(2)) == "
+                           "Lit(3)) then Block(Bin(Lit(1) + "
+                           "Lit(2))) else Block(Ident(hello))))");
 }
