@@ -47,6 +47,7 @@ bool is_binary_operator(Token tok) {
     case TokenKind::BinaryOr:
     case TokenKind::LogicalAnd:
     case TokenKind::LogicalOr:
+    case TokenKind::Period:
         return true;
     default:
         return false;
@@ -78,6 +79,8 @@ isize operator_precedence(Token tok) {
         return 7;
     case TokenKind::Bang:
         return 8;
+    case TokenKind::Period:
+        return 9;
     default:
         return 0;
     }
@@ -190,6 +193,10 @@ AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
         Token tok = next_token(file);
         return AstNodeLiteral::make(tok, AstLiteralKind::String, arena);
     }
+    case TokenKind::Bool: {
+        Token tok = next_token(file);
+        return AstNodeLiteral::make(tok, AstLiteralKind::Bool, arena);
+    }
     case TokenKind::Identifier: {
         Token tok = next_token(file);
         Token next = peek_token(file);
@@ -198,9 +205,6 @@ AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
             core_assert(false);
         } else if (next.kind == TokenKind::LBracket) {
             // TODO: Array access
-            core_assert(false);
-        } else if (next.kind == TokenKind::Period) {
-            // TODO: Struct field access
             core_assert(false);
         }
 

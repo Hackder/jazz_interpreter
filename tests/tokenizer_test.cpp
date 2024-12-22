@@ -106,7 +106,7 @@ TEST(Tokenizer, ReadToken) {
     Tokenizer tokenizer;
     const char* source_hello_world = R"(
     main :: fn(para: int, another) {
-      if 1 + 34 * 3 / 2 - 1 == 7 && 1 != 2 || 3 < 4 || 5 > 6 && 1 <= 2 && 3 >= 4 {
+      if 1 + 34 * 3 / 2 - 1 == 7 && 1 != 2 || 3 < 4 || 5 > 6 && 1 <= 2 && 3 >= 4 && true || false {
         dbg("Hi")
       }
 
@@ -345,6 +345,26 @@ TEST(Tokenizer, ReadToken) {
     EXPECT_EQ(result.error, TokenizerErrorKind::None);
     EXPECT_EQ(result.token.kind, TokenKind::Integer);
     EXPECT_EQ(result.token.source, string_from_cstr("4"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::LogicalAnd);
+    EXPECT_EQ(result.token.source, string_from_cstr("&&"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Bool);
+    EXPECT_EQ(result.token.source, string_from_cstr("true"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::LogicalOr);
+    EXPECT_EQ(result.token.source, string_from_cstr("||"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Bool);
+    EXPECT_EQ(result.token.source, string_from_cstr("false"));
 
     result = tokenizer_next_token(&tokenizer);
     EXPECT_EQ(result.error, TokenizerErrorKind::None);

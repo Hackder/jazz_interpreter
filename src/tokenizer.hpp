@@ -18,6 +18,7 @@ enum class TokenKind {
     // Literals
     Integer, // 1, 2, 3, ...
     String,  // "hello", "world", ...
+    Bool,    // true, false
 
     // Operators
     Plus,         // +
@@ -216,6 +217,9 @@ inline std::ostream& operator<<(std::ostream& os, TokenKind kind) {
         break;
     case TokenKind::Continue:
         os << "Continue";
+        break;
+    case TokenKind::Bool:
+        os << "Bool";
         break;
     }
     return os;

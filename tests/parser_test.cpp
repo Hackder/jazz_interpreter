@@ -216,3 +216,41 @@ TEST(Parser, IfExprWithElseAssigned) {
                            "Lit(3)) then Block(Bin(Lit(1) + "
                            "Lit(2))) else Block(Ident(hello))))");
 }
+
+TEST(Parser, MultipleStatementsWithinBlock) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        if true {
+            a := this + 1
+            b := a + 2
+
+            c := house.tree
+            b = c.window
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "If(Lit(true) then Block(Decl(a := Bin(Ident(this) + Lit(1))) "
+                 "Decl(b := Bin(Ident(a) + Lit(2))) Decl(c := Bin(Ident(house) "
+                 ". Ident(tree))) Assign(b Bin(Ident(c) . Ident(window)))))");
+}
+
+TEST(Parser, StructFieldAccess) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        another.something + 1
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_expression(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "Bin(Bin(Ident(another) . Ident(something)) + Lit(1))");
+}

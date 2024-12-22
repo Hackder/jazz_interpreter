@@ -311,6 +311,12 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
                 break;
             }
 
+            if (result.token.source == "true" ||
+                result.token.source == "false") {
+                result.token.kind = TokenKind::Bool;
+                break;
+            }
+
             break;
         }
 
