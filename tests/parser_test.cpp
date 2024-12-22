@@ -17,9 +17,10 @@ TEST(Parser, ExprNumbersOnly) {
     defer(arena_free(&arena));
     AstFile* file = setup_ast_file("1 + 2 + 3", &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, false, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Bin(Bin(Lit(1) + Lit(2)) + Lit(3))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ExprNumbersAndParens) {
@@ -28,9 +29,10 @@ TEST(Parser, ExprNumbersAndParens) {
     defer(arena_free(&arena));
     AstFile* file = setup_ast_file("1 + (2 + 3)", &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, false, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Bin(Lit(1) + Bin(Lit(2) + Lit(3)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ExprUnary) {
@@ -39,11 +41,12 @@ TEST(Parser, ExprUnary) {
     defer(arena_free(&arena));
     AstFile* file = setup_ast_file("-1 + +2 - -3", &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, false, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(
         ast.data,
         "Bin(Bin(Unary(- Lit(1)) + Unary(+ Lit(2))) - Unary(- Lit(3)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ExprCorrectPrecedence) {
@@ -52,10 +55,11 @@ TEST(Parser, ExprCorrectPrecedence) {
     defer(arena_free(&arena));
     AstFile* file = setup_ast_file("1 + 2 * 3 - 3 - 1 / 3 + 2", &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, false, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Bin(Bin(Bin(Bin(Lit(1) + Bin(Lit(2) * Lit(3))) - "
                            "Lit(3)) - Bin(Lit(1) / Lit(3))) + Lit(2))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ExprIdent) {
@@ -64,10 +68,11 @@ TEST(Parser, ExprIdent) {
     defer(arena_free(&arena));
     AstFile* file = setup_ast_file("1 + asdf * (thing - b)", &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, false, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Bin(Lit(1) + Bin(Ident(asdf) * "
                            "Bin(Ident(thing) - Ident(b))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, DeclSimpleVariable) {
@@ -79,6 +84,7 @@ TEST(Parser, DeclSimpleVariable) {
     AstNode* node = parse_declaration(file, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Decl(thing := Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, DeclSimpleConstant) {
@@ -90,6 +96,7 @@ TEST(Parser, DeclSimpleConstant) {
     AstNode* node = parse_declaration(file, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Decl(thing :: Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, DeclSimpleFunction) {
@@ -103,6 +110,7 @@ TEST(Parser, DeclSimpleFunction) {
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Decl(main :: Func(fn Param(para) Param(another) "
                            "Block(Bin(Lit(1) + Lit(2)))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, DeclSimpleFunctionReturnType) {
@@ -119,6 +127,41 @@ TEST(Parser, DeclSimpleFunctionReturnType) {
         ast.data,
         "Decl(main :: Func(fn -> Ident(int), Param(para) Param(another) "
         "Block(Bin(Ident(para) + Ident(another)))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, Block) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        {
+            1 + 1
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Block(Bin(Lit(1) + Lit(1)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, Break) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        {
+            break 1 + 1
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Block(Break(Bin(Lit(1) + Lit(1))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ForExpr) {
@@ -130,10 +173,10 @@ TEST(Parser, ForExpr) {
 
     AstNode* node = parse_statement(file, &arena);
     String ast = ast_serialize_debug(node, &arena);
-    EXPECT_STREQ(
-        ast.data,
-        "For(Decl(i := Lit(0)) Bin(Ident(i) < Lit(10)) "
-        "Assign(i Bin(Ident(i) + Lit(1))) then Block(Bin(Lit(1) + Lit(2))))");
+    EXPECT_STREQ(ast.data, "For(Decl(i := Lit(0)) Bin(Ident(i) < Lit(10)) "
+                           "Assign(Ident(i) Bin(Ident(i) + Lit(1))) then "
+                           "Block(Bin(Lit(1) + Lit(2))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ForExprWithElse) {
@@ -153,8 +196,9 @@ TEST(Parser, ForExprWithElse) {
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data,
                  "For(Decl(i := Lit(0)) Bin(Ident(i) < Lit(10)) "
-                 "Assign(i Bin(Ident(i) + Lit(1))) then "
+                 "Assign(Ident(i) Bin(Ident(i) + Lit(1))) then "
                  "Block(Break(Bin(Lit(1) + Lit(2)))) else Block(Lit(3)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ForExprWhile) {
@@ -175,6 +219,7 @@ TEST(Parser, ForExprWhile) {
     EXPECT_STREQ(ast.data,
                  "For(Bin(Ident(i) < Lit(10)) then Block(Break(Bin(Lit(1) "
                  "+ Lit(2)))) else Block(Lit(3)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ForExprInfinite) {
@@ -194,6 +239,7 @@ TEST(Parser, ForExprInfinite) {
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "For(then Block(Break(Bin(Lit(1) "
                            "+ Lit(2)))) else Block(Lit(3)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, IfExpr) {
@@ -213,6 +259,7 @@ TEST(Parser, IfExpr) {
         ast.data,
         "If(Bin(Bin(Ident(i) + Lit(2)) == Lit(3)) then Block(Bin(Lit(1) + "
         "Lit(2))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, IfExprWithElse) {
@@ -234,6 +281,7 @@ TEST(Parser, IfExprWithElse) {
         ast.data,
         "If(Bin(Bin(Ident(i) + Lit(2)) == Lit(3)) then Block(Bin(Lit(1) + "
         "Lit(2))) else Block(Ident(hello)))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, IfExprWithElseAssigned) {
@@ -254,6 +302,7 @@ TEST(Parser, IfExprWithElseAssigned) {
     EXPECT_STREQ(ast.data, "Decl(value := If(Bin(Bin(Ident(i) + Lit(2)) == "
                            "Lit(3)) then Block(Bin(Lit(1) + "
                            "Lit(2))) else Block(Ident(hello))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, StructFieldAccess) {
@@ -265,10 +314,27 @@ TEST(Parser, StructFieldAccess) {
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, true, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data,
                  "Bin(Bin(Ident(another) . Ident(something)) + Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, StructFieldAssignable) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        another.something = 1
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "Assign(Bin(Ident(another) . Ident(something)) Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ArrayIndex) {
@@ -280,11 +346,27 @@ TEST(Parser, ArrayIndex) {
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, true, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(
         ast.data,
         "Bin(Bin(Bin(Ident(another) . Ident(something)) [ Ident(i)) + Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, ArrayIndexAssignable) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        another[i] = 1
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Assign(Bin(Ident(another) [ Ident(i)) Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, ArrayIndexFunctionCallStructFieldAccess) {
@@ -296,13 +378,14 @@ TEST(Parser, ArrayIndexFunctionCallStructFieldAccess) {
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);
 
-    AstNode* node = parse_expression(file, &arena);
+    AstNode* node = parse_expression(file, true, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(
         ast.data,
         "Bin(Call(Bin(Call(Bin(Call(Call(Bin(Bin(Ident(another) . "
         "Ident(something)) [ Ident(i)) Lit(123)) Lit(34)) [ Lit(12)) Lit(33)) "
         ". Ident(window)) Ident(a) Ident(b) Lit(34)) [ Lit(12))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }
 
 TEST(Parser, MultipleStatementsWithinBlock) {
@@ -326,6 +409,7 @@ TEST(Parser, MultipleStatementsWithinBlock) {
         ast.data,
         "If(Lit(true) then Block(Decl(a := Bin(Ident(this) + Lit(1))) Decl(b "
         ":= Bin(Ident(a) + Lit(2))) Decl(c := Call(Bin(Bin(Ident(house) [ "
-        "Ident(i)) . Ident(tree)))) Assign(b Bin(Call(Bin(Ident(c) . "
+        "Ident(i)) . Ident(tree)))) Assign(Ident(b) Bin(Call(Bin(Ident(c) . "
         "Ident(window)) Ident(a) Ident(b) Lit(34)) [ Lit(12)))))");
+    EXPECT_TRUE(ast_file_exhausted(file));
 }

@@ -209,7 +209,7 @@ void ast_serialize_debug_rec(AstNode* node, std::ostream& stream) {
     }
     case AstNodeKind::Assignment: {
         stream << "Assign(";
-        stream << node->as_assignment()->name->token.source;
+        ast_serialize_debug_rec(node->as_assignment()->name, stream);
         stream << " ";
         ast_serialize_debug_rec(node->as_assignment()->value, stream);
         stream << ")";

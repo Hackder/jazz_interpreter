@@ -20,7 +20,9 @@ inline AstFile* ast_file_make(Tokenizer tokenizer, isize peek_capacity,
     return file;
 }
 
-AstNode* parse_expression(AstFile* file, Arena* arena);
+AstNode* parse_expression(AstFile* file, bool allow_newlines, Arena* arena);
 AstNode* parse_declaration(AstFile* file, Arena* arena);
 AstNode* parse_statement(AstFile* file, Arena* arena);
+
+bool ast_file_exhausted(AstFile* file);
 Ast* ast_file_parse(AstFile* file);

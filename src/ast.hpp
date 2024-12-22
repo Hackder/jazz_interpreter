@@ -293,11 +293,11 @@ struct AstNodeDeclaration : public AstNode {
 
 struct AstNodeAssignment : public AstNode {
     Token token;
-    AstNodeIdentifier* name;
+    AstNode* name;
     AstNode* value;
 
-    static AstNodeAssignment* make(AstNodeIdentifier* name, AstNode* value,
-                                   Token token, Arena* arena) {
+    static AstNodeAssignment* make(AstNode* name, AstNode* value, Token token,
+                                   Arena* arena) {
         AstNodeAssignment* node = arena_alloc<AstNodeAssignment>(arena);
         node->kind = AstNodeKind::Assignment;
         node->name = name;
