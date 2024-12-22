@@ -386,4 +386,8 @@ struct Ast {
     Array<AstNode*> declarations;
 };
 
+inline void ast_init(Ast* ast, Arena* arena) {
+    array_init(&ast->declarations, 16, arena);
+}
+
 String ast_serialize_debug(AstNode* node, Arena* arena);

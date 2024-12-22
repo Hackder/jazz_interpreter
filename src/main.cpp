@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "parser.hpp"
 #include <cstdio>
 #include <iostream>
 
@@ -47,7 +48,22 @@ int main(int argc, char* argv[]) {
     const char* source_file = argv[1];
     String source_code = read_file(&arena, source_file);
 
-    std::cout << source_code << std::endl;
+    Tokenizer tokenizer;
+    tokenizer_init(&tokenizer, source_code);
+    AstFile* file = ast_file_make(tokenizer, 16, &arena);
+    ast_file_parse(file, &arena);
+
+    for (isize i = 0; i < file->errors.size; i++) {
+        ParseError error = file->errors[i];
+        std::cerr << error.token.kind << ": " << error.message << std::endl;
+        return 1;
+    }
+
+    for (isize i = 0; i < file->ast->declarations.size; i++) {
+        AstNode* node = file->ast->declarations[i];
+        std::cout << ast_serialize_debug(node, &arena) << std::endl
+                  << std::endl;
+    }
 
     return 0;
 }

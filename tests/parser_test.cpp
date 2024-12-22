@@ -426,7 +426,7 @@ TEST(Parser, SimpleErrors) {
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);
 
-    AstNode* node = parse_statement(file, &arena);
+    parse_statement(file, &arena);
     for (int i = 0; i < file->errors.size; i++) {
         ParseError error = file->errors[i];
         std::cerr << error.token.kind << ": " << error.message << std::endl;
