@@ -43,6 +43,7 @@ enum class TokenKind {
     LogicalOr,    // ||
     Bang,         // !
     Comma,        // ,
+    Arrow,        // ->
 
 };
 
@@ -198,6 +199,9 @@ inline std::ostream& operator<<(std::ostream& os, TokenKind kind) {
         break;
     case TokenKind::Comma:
         os << "Comma";
+        break;
+    case TokenKind::Arrow:
+        os << "Arrow";
         break;
     }
     return os;

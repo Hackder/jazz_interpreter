@@ -180,6 +180,14 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
         break;
     }
     case '-': {
+        if (tokenizer->read_position < tokenizer->source.size &&
+            tokenizer->source[tokenizer->read_position] == '>') {
+            result.token.kind = TokenKind::Arrow;
+            result.token.source.size = 2;
+            tokenizer->read_position += 1;
+            break;
+        }
+
         result.token.kind = TokenKind::Minus;
         break;
     }

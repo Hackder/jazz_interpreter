@@ -104,3 +104,19 @@ TEST(Parser, ParserDeclSimpleFunction) {
     EXPECT_STREQ(ast.data, "Decl(main :: Func(fn Param(para) Param(another) "
                            "Block(Bin(Lit(1) + Lit(2)))))");
 }
+
+TEST(Parser, ParserDeclSimpleFunctionReturnType) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source =
+        "main :: fn(para: int, another) -> int { para + another }";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_declaration(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "Decl(main :: Func(fn -> Ident(int), Param(para) Param(another) "
+        "Block(Bin(Ident(para) + Ident(another)))))");
+}

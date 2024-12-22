@@ -157,6 +157,11 @@ void ast_serialize_debug_rec(AstNode* node, std::ostream& stream) {
         stream << "Func(";
         stream << node->as_function()->token.source;
         stream << " ";
+        if (node->as_function()->return_type) {
+            stream << "-> ";
+            ast_serialize_debug_rec(node->as_function()->return_type, stream);
+            stream << ", ";
+        }
         for (isize i = 0; i < node->as_function()->parameters.size; i++) {
             ast_serialize_debug_rec(node->as_function()->parameters[i], stream);
             stream << " ";

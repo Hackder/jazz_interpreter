@@ -152,9 +152,17 @@ AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
     tok = next_token(file);
     core_assert(tok.kind == TokenKind::RParen);
 
+    AstNode* return_type = nullptr;
+    Token next = peek_token(file);
+    if (next.kind == TokenKind::Arrow) {
+        next_token(file);
+        return_type = parse_type(file, arena);
+    }
+
     AstNodeBlock* body = parse_block(file, arena);
 
-    return AstNodeFunction::make(parameters, nullptr, body, fn_keyword, arena);
+    return AstNodeFunction::make(parameters, return_type, body, fn_keyword,
+                                 arena);
 }
 
 // Parses everything that a binary operator can be applied to.
