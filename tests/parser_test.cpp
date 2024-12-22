@@ -413,3 +413,23 @@ TEST(Parser, MultipleStatementsWithinBlock) {
         "Ident(window)) Ident(a) Ident(b) Lit(34)) [ Lit(12)))))");
     EXPECT_TRUE(ast_file_exhausted(file));
 }
+
+TEST(Parser, SimpleErrors) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        if true {
+            a := 1 +
+            b := a + 2
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    for (int i = 0; i < file->errors.size; i++) {
+        ParseError error = file->errors[i];
+        std::cerr << error.token.kind << ": " << error.message << std::endl;
+    }
+    EXPECT_TRUE(ast_file_exhausted(file));
+}

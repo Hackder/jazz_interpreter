@@ -108,7 +108,9 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
         return TokenizerResult{.error = TokenizerErrorKind::None,
                                .token = Token{
                                    .kind = TokenKind::Eof,
-                                   .source = {.data = nullptr, .size = 0},
+                                   .source = {.data = tokenizer->source.data +
+                                                      tokenizer->source.size,
+                                              .size = 0},
                                }};
     }
 

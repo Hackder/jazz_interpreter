@@ -2,14 +2,45 @@
 #include "core.hpp"
 #include <iostream>
 
+#define check_condition(cond, token, message)                                  \
+    if (!(cond)) {                                                             \
+        report_error(file, token, message);                                    \
+        return nullptr;                                                        \
+    }
+
+void report_error(AstFile* file, Token token, const char* message) {
+    ParseError error = {
+        .token = token,
+        .message = string_from_cstr(message),
+    };
+
+    array_push(&file->errors, error);
+}
+
 Token peek_token(AstFile* file, isize index = 1) {
     core_assert(index > 0);
 
     while (file->tokens.size < index) {
         TokenizerResult token = tokenizer_next_token(&file->tokenizer);
-        // TODO(juraj): handle errors
-        core_assert(token.error == TokenizerErrorKind::None);
-        ring_buffer_push_end(&file->tokens, token.token);
+
+        switch (token.error) {
+        case TokenizerErrorKind::None: {
+            ring_buffer_push_end(&file->tokens, token.token);
+            break;
+        }
+        case TokenizerErrorKind::UnclosedString: {
+            report_error(file, token.token, "Unclosed string  literal");
+            ring_buffer_push_end(
+                &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
+            break;
+        }
+        case TokenizerErrorKind::InvalidCharacter: {
+            report_error(file, token.token, "Invalid character");
+            ring_buffer_push_end(
+                &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
+            break;
+        }
+        }
     }
 
     return file->tokens[index - 1];
@@ -28,7 +59,9 @@ AstNode* parse_type(AstFile* file, Arena* arena) {
     }
 
     // TODO(juraj): support for function type literals
-    core_assert(false);
+    // fn(int, int) -> int
+    report_error(file, tok, "Expected a type");
+    return nullptr;
 }
 
 bool ast_file_exhausted(AstFile* file) {
@@ -110,7 +143,7 @@ void skip_newlines(AstFile* file) {
 
 AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
-    core_assert(tok.kind == TokenKind::LBrace);
+    check_condition(tok.kind == TokenKind::LBrace, tok, "Expected '{'");
 
     Array<AstNode*> statements;
     array_init<AstNode*>(&statements, 16, arena);
@@ -122,9 +155,8 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
             break;
         }
 
-        if (next.kind == TokenKind::Eof) {
-            core_assert(false);
-        }
+        check_condition(next.kind != TokenKind::Eof, next,
+                        "Unexpected end of file, block not closed properly");
 
         AstNode* statement = parse_statement(file, arena);
         array_push<AstNode*>(&statements, statement);
@@ -138,10 +170,11 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
 
 AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
     Token fn_keyword = next_token(file);
-    core_assert(fn_keyword.kind == TokenKind::Func);
+    check_condition(fn_keyword.kind == TokenKind::Func, fn_keyword,
+                    "Expected 'fn' keyword (a function definition)");
 
     Token tok = next_token(file);
-    core_assert(tok.kind == TokenKind::LParen);
+    check_condition(tok.kind == TokenKind::LParen, tok, "Expected '('");
 
     Array<AstNodeParameter*> parameters;
     array_init(&parameters, 8, arena);
@@ -153,9 +186,10 @@ AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
         }
 
         Token name = next_token(file);
-        core_assert(name.kind == TokenKind::Identifier);
+        check_condition(name.kind == TokenKind::Identifier, name,
+                        "Expacted a valid identifier")
 
-        next = peek_token(file);
+            next = peek_token(file);
 
         AstNode* type = nullptr;
         if (next.kind == TokenKind::Colon) {
@@ -222,7 +256,7 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
         AstNode* inner = parse_expression(file, true, arena);
 
         tok = next_token(file);
-        core_assert(tok.kind == TokenKind::RParen);
+        check_condition(tok.kind == TokenKind::RParen, tok, "Expected ')'");
         return inner;
     }
     // Unary operators
@@ -273,18 +307,22 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
                     break;
                 }
 
-                if (next.kind == TokenKind::Eof) {
-                    core_assert(false);
-                }
+                check_condition(
+                    next.kind != TokenKind::Eof, next,
+                    "Unexpected end of file within 'for' definition");
             }
 
             if (number_of_semicolons == 2) {
                 init = parse_statement(file, arena);
                 Token tok = next_token(file);
-                core_assert(tok.kind == TokenKind::Semicolon);
+                check_condition(
+                    tok.kind == TokenKind::Semicolon, tok,
+                    "For definitions must be separated by semicolons");
                 condition = parse_expression(file, false, arena);
                 tok = next_token(file);
-                core_assert(tok.kind == TokenKind::Semicolon);
+                check_condition(
+                    tok.kind == TokenKind::Semicolon, tok,
+                    "For definitions must be separated by semicolons");
                 update = parse_statement(file, arena);
             }
 
@@ -310,13 +348,7 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
     }
     // Invalid
     default: {
-        std::cerr << "Unexpected token: " << tok.source << std::endl;
-        String parsed = {
-            .data = file->tokenizer.source.data,
-            .size = tok.source.data - file->tokenizer.source.data,
-        };
-        std::cerr << "Parsed: " << parsed << std::endl;
-        core_assert(false);
+        check_condition(false, tok, "Unexpected token within expression");
     }
     }
 }
@@ -363,7 +395,7 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence,
             next_token(file);
             Array<AstNode*> arguments = parse_function_arguments(file, arena);
             tok = next_token(file);
-            core_assert(tok.kind == TokenKind::RParen);
+            check_condition(tok.kind == TokenKind::RParen, tok, "Expected ')'");
 
             AstNodeCall* call = AstNodeCall::make(left, arguments, tok, arena);
             left = call;
@@ -380,7 +412,8 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence,
             next_token(file);
             AstNode* index = parse_expression(file, true, arena);
             Token next = next_token(file);
-            core_assert(next.kind == TokenKind::RBracket);
+            check_condition(next.kind == TokenKind::RBracket, next,
+                            "Expected ']'");
 
             AstNodeBinary* binary =
                 AstNodeBinary::make(left, index, tok, arena);
@@ -413,11 +446,12 @@ AstNode* parse_expression(AstFile* file, bool allow_newlines, Arena* arena) {
 
 AstNode* parse_declaration(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
-    core_assert(tok.kind == TokenKind::Identifier);
+    check_condition(tok.kind == TokenKind::Identifier, tok,
+                    "Expected an identifier");
     AstNodeIdentifier* name = AstNodeIdentifier::make(tok, arena);
 
     Token colon = next_token(file);
-    core_assert(colon.kind == TokenKind::Colon);
+    check_condition(colon.kind == TokenKind::Colon, colon, "Expected ':'");
 
     AstNode* type = nullptr;
     tok = next_token(file);
@@ -438,7 +472,7 @@ AstNode* parse_declaration(AstFile* file, Arena* arena) {
                                         AstDeclarationKind::Variable, arena);
     }
 
-    core_assert(false);
+    check_condition(false, tok, "Expected ':' or '='");
 }
 
 bool ast_node_is_assignable(AstNode* node) {
@@ -504,7 +538,8 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
         case TokenKind::Assign: {
             next_token(file);
             AstNode* value = parse_expression(file, false, arena);
-            core_assert(ast_node_is_assignable(expr));
+            check_condition(ast_node_is_assignable(expr), next,
+                            "Left-hand side of assignment must be assignable");
             return AstNodeAssignment::make(expr, value, next, arena);
         }
         case TokenKind::Newline: {
@@ -518,7 +553,7 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
             return expr;
         }
         default:
-            core_assert(false);
+            check_condition(false, next, "Expected a statement");
         }
     }
     }
