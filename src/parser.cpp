@@ -80,6 +80,8 @@ isize operator_precedence(Token tok) {
     case TokenKind::Bang:
         return 8;
     case TokenKind::Period:
+    case TokenKind::LParen:
+    case TokenKind::LBracket:
         return 9;
     default:
         return 0;
@@ -199,15 +201,6 @@ AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
     }
     case TokenKind::Identifier: {
         Token tok = next_token(file);
-        Token next = peek_token(file);
-        if (next.kind == TokenKind::LParen) {
-            // TODO: Function call
-            core_assert(false);
-        } else if (next.kind == TokenKind::LBracket) {
-            // TODO: Array access
-            core_assert(false);
-        }
-
         return AstNodeIdentifier::make(tok, arena);
     }
     case TokenKind::LParen: {
@@ -308,12 +301,70 @@ AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
     }
 }
 
+Array<AstNode*> parse_function_arguments(AstFile* file, Arena* arena) {
+    Array<AstNode*> arguments;
+    array_init<AstNode*>(&arguments, 8, arena);
+
+    while (true) {
+        Token tok = peek_token(file);
+        if (tok.kind == TokenKind::RParen) {
+            break;
+        }
+
+        AstNode* argument = parse_expression(file, arena);
+        array_push<AstNode*>(&arguments, argument);
+
+        tok = peek_token(file);
+        if (tok.kind == TokenKind::Comma) {
+            next_token(file);
+        }
+    }
+
+    return arguments;
+}
+
 AstNode* parse_expression_rec(AstFile* file, isize precedence, Arena* arena) {
     AstNode* left = parse_expression_operand(file, arena);
 
     while (true) {
         skip_newlines(file);
         Token tok = peek_token(file);
+
+        // Function call
+        if (tok.kind == TokenKind::LParen) {
+            isize next_precedence = operator_precedence(tok);
+            if (next_precedence <= precedence) {
+                break;
+            }
+
+            next_token(file);
+            Array<AstNode*> arguments = parse_function_arguments(file, arena);
+            tok = next_token(file);
+            core_assert(tok.kind == TokenKind::RParen);
+
+            AstNodeCall* call = AstNodeCall::make(left, arguments, tok, arena);
+            left = call;
+            continue;
+        }
+
+        // Array access
+        if (tok.kind == TokenKind::LBracket) {
+            isize next_precedence = operator_precedence(tok);
+            if (next_precedence <= precedence) {
+                break;
+            }
+
+            next_token(file);
+            AstNode* index = parse_expression(file, arena);
+            Token next = next_token(file);
+            core_assert(next.kind == TokenKind::RBracket);
+
+            AstNodeBinary* binary =
+                AstNodeBinary::make(left, index, tok, arena);
+            left = binary;
+            continue;
+        }
+
         if (!is_binary_operator(tok)) {
             break;
         }

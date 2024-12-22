@@ -157,6 +157,45 @@ TEST(Parser, ForExprWithElse) {
                  "Block(Break(Bin(Lit(1) + Lit(2)))) else Block(Lit(3)))");
 }
 
+TEST(Parser, ForExprWhile) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        for i < 10 {
+            break 1 + 2
+        } else {
+            3
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "For(Bin(Ident(i) < Lit(10)) then Block(Break(Bin(Lit(1) "
+                 "+ Lit(2)))) else Block(Lit(3)))");
+}
+
+TEST(Parser, ForExprInfinite) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        for {
+            break 1 + 2
+        } else {
+            3
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "For(then Block(Break(Bin(Lit(1) "
+                           "+ Lit(2)))) else Block(Lit(3)))");
+}
+
 TEST(Parser, IfExpr) {
     Arena arena;
     arena_init(&arena, 2048);
@@ -217,29 +256,6 @@ TEST(Parser, IfExprWithElseAssigned) {
                            "Lit(2))) else Block(Ident(hello))))");
 }
 
-TEST(Parser, MultipleStatementsWithinBlock) {
-    Arena arena;
-    arena_init(&arena, 2048);
-    defer(arena_free(&arena));
-    const char* source = R"SOURCE(
-        if true {
-            a := this + 1
-            b := a + 2
-
-            c := house.tree
-            b = c.window
-        }
-    )SOURCE";
-    AstFile* file = setup_ast_file(source, &arena);
-
-    AstNode* node = parse_statement(file, &arena);
-    String ast = ast_serialize_debug(node, &arena);
-    EXPECT_STREQ(ast.data,
-                 "If(Lit(true) then Block(Decl(a := Bin(Ident(this) + Lit(1))) "
-                 "Decl(b := Bin(Ident(a) + Lit(2))) Decl(c := Bin(Ident(house) "
-                 ". Ident(tree))) Assign(b Bin(Ident(c) . Ident(window)))))");
-}
-
 TEST(Parser, StructFieldAccess) {
     Arena arena;
     arena_init(&arena, 2048);
@@ -253,4 +269,63 @@ TEST(Parser, StructFieldAccess) {
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data,
                  "Bin(Bin(Ident(another) . Ident(something)) + Lit(1))");
+}
+
+TEST(Parser, ArrayIndex) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        another.something[i] + 1
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_expression(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "Bin(Bin(Bin(Ident(another) . Ident(something)) [ Ident(i)) + Lit(1))");
+}
+
+TEST(Parser, ArrayIndexFunctionCallStructFieldAccess) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        another.something[i](123)(34)[12](33).window(a, b, 34)[12]
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_expression(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "Bin(Call(Bin(Call(Bin(Call(Call(Bin(Bin(Ident(another) . "
+        "Ident(something)) [ Ident(i)) Lit(123)) Lit(34)) [ Lit(12)) Lit(33)) "
+        ". Ident(window)) Ident(a) Ident(b) Lit(34)) [ Lit(12))");
+}
+
+TEST(Parser, MultipleStatementsWithinBlock) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        if true {
+            a := this + 1
+            b := a + 2
+
+            c := house[i].tree()
+            b = c.window(a, b, 34)[12]
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(
+        ast.data,
+        "If(Lit(true) then Block(Decl(a := Bin(Ident(this) + Lit(1))) Decl(b "
+        ":= Bin(Ident(a) + Lit(2))) Decl(c := Call(Bin(Bin(Ident(house) [ "
+        "Ident(i)) . Ident(tree)))) Assign(b Bin(Call(Bin(Ident(c) . "
+        "Ident(window)) Ident(a) Ident(b) Lit(34)) [ Lit(12)))))");
 }
