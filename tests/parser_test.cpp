@@ -6,9 +6,7 @@ AstFile* setup_ast_file(const char* source, Arena* arena) {
     Tokenizer tokenizer;
     tokenzier_init(&tokenizer, string_from_cstr(source));
 
-    AstFile* file = arena_alloc<AstFile>(arena);
-    file->tokenizer = tokenizer;
-    file->peeked_token = {TokenKind::Invalid, {}};
+    AstFile* file = ast_file_make(tokenizer, 16, arena);
 
     return file;
 }
@@ -92,4 +90,17 @@ TEST(Parser, ParseDeclSimpleConstant) {
     AstNode* node = parse_declaration(file, &arena);
     String ast = ast_serialize_debug(node, &arena);
     EXPECT_STREQ(ast.data, "Decl(thing :: Lit(1))");
+}
+
+TEST(Parser, ParserDeclSimpleFunction) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = "main :: fn(para: int, another) { 1 + 2 }";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_declaration(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Decl(main :: Func(fn Param(para) Param(another) "
+                           "Block(Bin(Lit(1) + Lit(2)))))");
 }

@@ -18,6 +18,7 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
+add_compile_options(-Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments)
 add_executable(
   jazz
   ./src/core.hpp
@@ -29,7 +30,7 @@ add_executable(
   ./src/parser.cpp
   ./src/main.cpp
 )
-target_compile_options(jazz PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(jazz PRIVATE)
 
 add_executable(
   jazz_test
@@ -44,7 +45,7 @@ add_executable(
   ./tests/tokenizer_test.cpp
   ./tests/parser_test.cpp
 )
-target_compile_options(jazz_test PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(jazz_test PRIVATE)
 
 target_include_directories(
   jazz_test PRIVATE src

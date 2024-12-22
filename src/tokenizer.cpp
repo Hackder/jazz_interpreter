@@ -33,8 +33,8 @@ void skip_whitespace(Tokenizer* tokenizer) {
 }
 
 void try_read_string(Tokenizer* tokenizer, TokenizerResult* result) {
-    assert(tokenizer->read_position >= tokenizer->position);
-    assert(tokenizer->read_position <= tokenizer->source.size);
+    core_assert(tokenizer->read_position >= tokenizer->position);
+    core_assert(tokenizer->read_position <= tokenizer->source.size);
 
     result->token.kind = TokenKind::String;
     while (tokenizer->read_position < tokenizer->source.size) {
@@ -61,8 +61,8 @@ void try_read_string(Tokenizer* tokenizer, TokenizerResult* result) {
 }
 
 void try_read_number(Tokenizer* tokenizer, TokenizerResult* result) {
-    assert(tokenizer->read_position >= tokenizer->position);
-    assert(tokenizer->read_position <= tokenizer->source.size);
+    core_assert(tokenizer->read_position >= tokenizer->position);
+    core_assert(tokenizer->read_position <= tokenizer->source.size);
 
     result->token.kind = TokenKind::Integer;
     while (tokenizer->read_position < tokenizer->source.size) {
@@ -100,8 +100,8 @@ void try_read_identifier(Tokenizer* tokenizer, TokenizerResult* result) {
 }
 
 TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
-    assert(tokenizer->position <= tokenizer->source.size);
-    assert(tokenizer->read_position == tokenizer->position);
+    core_assert(tokenizer->position <= tokenizer->source.size);
+    core_assert(tokenizer->read_position == tokenizer->position);
 
     if (tokenizer->position >= tokenizer->source.size) {
         return TokenizerResult{.error = TokenizerErrorKind::None,
@@ -189,6 +189,10 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
     }
     case '/': {
         result.token.kind = TokenKind::Slash;
+        break;
+    }
+    case ',': {
+        result.token.kind = TokenKind::Comma;
         break;
     }
     case '<': {

@@ -1,10 +1,26 @@
 #include "ast.hpp"
+#include "core.hpp"
 
 struct AstFile {
     Tokenizer tokenizer;
-    Token peeked_token;
+    RingBuffer<Token> tokens;
 };
+
+inline void ast_file_init(AstFile* file, Tokenizer tokenizer,
+                          isize peek_capacity, Arena* arena) {
+    file->tokenizer = tokenizer;
+    ring_buffer_init(&file->tokens, peek_capacity, arena);
+}
+
+inline AstFile* ast_file_make(Tokenizer tokenizer, isize peek_capacity,
+                              Arena* arena) {
+    AstFile* file = arena_alloc<AstFile>(arena);
+    ast_file_init(file, tokenizer, peek_capacity, arena);
+
+    return file;
+}
 
 AstNode* parse_expression(AstFile* file, Arena* arena);
 AstNode* parse_declaration(AstFile* file, Arena* arena);
+AstNode* parse_statement(AstFile* file, Arena* arena);
 Ast* ast_file_parse(AstFile* file);

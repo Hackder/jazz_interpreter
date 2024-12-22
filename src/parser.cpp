@@ -1,39 +1,33 @@
 #include "parser.hpp"
 #include "core.hpp"
-#include <iostream>
 
-Token next_token(AstFile* file) {
-    if (file->peeked_token.kind != TokenKind::Invalid) {
-        Token tok = file->peeked_token;
-        file->peeked_token = Token{TokenKind::Invalid, {}};
-        return tok;
-    }
+Token peek_token(AstFile* file, isize index = 1) {
+    core_assert(index > 0);
 
-    TokenizerResult token = tokenizer_next_token(&file->tokenizer);
-    // TODO(juraj): handle errors
-    assert(token.error == TokenizerErrorKind::None);
-    return token.token;
-}
-
-Token peek_next_token(AstFile* file) {
-    if (file->peeked_token.kind == TokenKind::Invalid) {
+    while (file->tokens.size < index) {
         TokenizerResult token = tokenizer_next_token(&file->tokenizer);
         // TODO(juraj): handle errors
-        assert(token.error == TokenizerErrorKind::None);
-        file->peeked_token = token.token;
+        core_assert(token.error == TokenizerErrorKind::None);
+        ring_buffer_push_end(&file->tokens, token.token);
     }
 
-    return file->peeked_token;
+    return file->tokens[index - 1];
+}
+
+Token next_token(AstFile* file) {
+    Token tok = peek_token(file);
+    ring_buffer_pop_front(&file->tokens);
+    return tok;
 }
 
 AstNode* parse_type(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
     if (tok.kind == TokenKind::Identifier) {
-        return ast_identifier_make(tok, arena);
+        return AstNodeIdentifier::make(tok, arena);
     }
 
     // TODO(juraj): support for function type literals
-    assert(false);
+    core_assert(false);
 }
 
 bool is_binary_operator(Token tok) {
@@ -90,39 +84,115 @@ isize operator_precedence(Token tok) {
 
 AstNode* parse_expression(AstFile* file, Arena* arena);
 
-AstNode* parse_expression_value(AstFile* file, Arena* arena) {
-    Token tok = peek_next_token(file);
+AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
+    Token tok = next_token(file);
+    core_assert(tok.kind == TokenKind::LBrace);
+
+    Array<AstNode*> statements;
+    array_init<AstNode*>(&statements, 16, arena);
+
+    while (true) {
+        Token next = peek_token(file);
+        if (next.kind == TokenKind::RBrace) {
+            break;
+        }
+
+        if (next.kind == TokenKind::Eof) {
+            core_assert(false);
+        }
+
+        AstNode* statement = parse_statement(file, arena);
+        array_push<AstNode*>(&statements, statement);
+    }
+
+    tok = next_token(file);
+    core_assert(tok.kind == TokenKind::RBrace);
+
+    return AstNodeBlock::make(statements, tok, arena);
+}
+
+AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
+    Token fn_keyword = next_token(file);
+    core_assert(fn_keyword.kind == TokenKind::Func);
+
+    Token tok = next_token(file);
+    core_assert(tok.kind == TokenKind::LParen);
+
+    Array<AstNodeParameter*> parameters;
+    array_init(&parameters, 8, arena);
+
+    while (true) {
+        Token next = peek_token(file);
+        if (next.kind == TokenKind::RParen) {
+            break;
+        }
+
+        Token name = next_token(file);
+        core_assert(name.kind == TokenKind::Identifier);
+
+        next = peek_token(file);
+
+        AstNode* type = nullptr;
+        if (next.kind == TokenKind::Colon) {
+            next_token(file);
+            type = parse_type(file, arena);
+            next = peek_token(file);
+        }
+
+        if (next.kind == TokenKind::Comma) {
+            next_token(file);
+        }
+
+        AstNodeParameter* parameter = AstNodeParameter::make(
+            AstNodeIdentifier::make(name, arena), type, next, arena);
+
+        array_push(&parameters, parameter);
+    }
+
+    tok = next_token(file);
+    core_assert(tok.kind == TokenKind::RParen);
+
+    AstNodeBlock* body = parse_block(file, arena);
+
+    return AstNodeFunction::make(parameters, nullptr, body, fn_keyword, arena);
+}
+
+// Parses everything that a binary operator can be applied to.
+// This includes literals, identifiers, unary operators, and more complex
+// expressions.
+AstNode* parse_expression_operand(AstFile* file, Arena* arena) {
+    Token tok = peek_token(file);
     switch (tok.kind) {
     case TokenKind::Integer: {
         Token tok = next_token(file);
-        return ast_literal_make(tok, AstLiteralKind::Integer, arena);
+        return AstNodeLiteral::make(tok, AstLiteralKind::Integer, arena);
     }
     case TokenKind::String: {
         Token tok = next_token(file);
-        return ast_literal_make(tok, AstLiteralKind::String, arena);
+        return AstNodeLiteral::make(tok, AstLiteralKind::String, arena);
     }
     case TokenKind::Identifier: {
         Token tok = next_token(file);
-        Token next = peek_next_token(file);
+        Token next = peek_token(file);
         if (next.kind == TokenKind::LParen) {
             // TODO: Function call
-            assert(false);
+            core_assert(false);
         } else if (next.kind == TokenKind::LBracket) {
             // TODO: Array access
-            assert(false);
+            core_assert(false);
         } else if (next.kind == TokenKind::Period) {
             // TODO: Struct field access
-            assert(false);
+            core_assert(false);
         }
 
-        return ast_identifier_make(tok, arena);
+        return AstNodeIdentifier::make(tok, arena);
     }
     case TokenKind::LParen: {
         Token tok = next_token(file);
         AstNode* inner = parse_expression(file, arena);
 
         tok = next_token(file);
-        assert(tok.kind == TokenKind::RParen);
+        core_assert(tok.kind == TokenKind::RParen);
         return inner;
     }
     // Unary operators
@@ -130,27 +200,31 @@ AstNode* parse_expression_value(AstFile* file, Arena* arena) {
     case TokenKind::Minus:
     case TokenKind::Bang: {
         Token tok = next_token(file);
-        AstNode* operand = parse_expression_value(file, arena);
-        return ast_unary_make(operand, tok, arena);
+        AstNode* operand = parse_expression_operand(file, arena);
+        return AstNodeUnary::make(operand, tok, arena);
     }
     // More complex expressions
-    case TokenKind::If:
+    case TokenKind::If: {
+        Token tok = next_token(file);
+        AstNode* condition = parse_expression(file, arena);
+        AstNode* then_branch = parse_block(file, arena);
+    }
     case TokenKind::For:
     case TokenKind::Func: {
-        assert(false);
+        return parse_function_expression(file, arena);
     }
     // Invalid
     default:
-        assert(false);
+        core_assert(false);
     }
 }
 
 AstNode* parse_expression_rec(AstFile* file, isize precedence, Arena* arena) {
-    AstNode* left = parse_expression_value(file, arena);
+    AstNode* left = parse_expression_operand(file, arena);
 
     bool valid = true;
     while (valid) {
-        Token tok = peek_next_token(file);
+        Token tok = peek_token(file);
         if (!is_binary_operator(tok)) {
             break;
         }
@@ -162,7 +236,7 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence, Arena* arena) {
 
         tok = next_token(file);
         AstNode* right = parse_expression_rec(file, next_precedence, arena);
-        AstNode* binary = ast_binary_make(left, right, tok, arena);
+        AstNode* binary = AstNodeBinary::make(left, right, tok, arena);
         left = binary;
     }
 
@@ -175,11 +249,11 @@ AstNode* parse_expression(AstFile* file, Arena* arena) {
 
 AstNode* parse_declaration(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
-    assert(tok.kind == TokenKind::Identifier);
-    AstNodeIdentifier name = {tok};
+    core_assert(tok.kind == TokenKind::Identifier);
+    AstNodeIdentifier* name = AstNodeIdentifier::make(tok, arena);
 
     Token colon = next_token(file);
-    assert(colon.kind == TokenKind::Colon);
+    core_assert(colon.kind == TokenKind::Colon);
 
     AstNode* type = nullptr;
     tok = next_token(file);
@@ -191,16 +265,56 @@ AstNode* parse_declaration(AstFile* file, Arena* arena) {
     if (tok.kind == TokenKind::Colon) {
         AstNode* value = parse_expression(file, arena);
 
-        return ast_declaration_make(name, type, value,
-                                    AstDeclarationKind::Constant, arena);
+        return AstNodeDeclaration::make(name, type, value,
+                                        AstDeclarationKind::Constant, arena);
     } else if (tok.kind == TokenKind::Assign) {
         AstNode* value = parse_expression(file, arena);
 
-        return ast_declaration_make(name, type, value,
-                                    AstDeclarationKind::Variable, arena);
+        return AstNodeDeclaration::make(name, type, value,
+                                        AstDeclarationKind::Variable, arena);
     }
 
-    assert(false);
+    core_assert(false);
 }
 
-Ast* ast_file_parse(AstFile* file, Arena* arena) { assert(false); }
+AstNode* parse_statement(AstFile* file, Arena* arena) {
+    core_assert(file);
+    core_assert(arena);
+
+    Token tok = peek_token(file);
+    switch (tok.kind) {
+    case TokenKind::Identifier: {
+        if (peek_token(file, 2).kind == TokenKind::Colon) {
+            return parse_declaration(file, arena);
+        }
+
+        if (peek_token(file, 2).kind == TokenKind::Assign) {
+            Token iden_tok = next_token(file);
+            Token assign_tok = next_token(file);
+
+            AstNode* value = parse_expression(file, arena);
+            AstNode* assign = AstNodeAssignment::make(
+                AstNodeIdentifier::make(iden_tok, arena), value, assign_tok,
+                arena);
+
+            return assign;
+        }
+
+        return parse_expression(file, arena);
+    }
+    case TokenKind::LParen:
+        return parse_expression(file, arena);
+    case TokenKind::LBrace:
+        return parse_block(file, arena);
+    case TokenKind::If:
+        return nullptr;
+    case TokenKind::For:
+        return nullptr;
+    case TokenKind::Func:
+        return nullptr;
+    default:
+        return parse_expression(file, arena);
+    }
+}
+
+Ast* ast_file_parse(AstFile* file, Arena* arena) { core_assert(false); }

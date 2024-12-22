@@ -51,12 +51,84 @@ TEST(Core, ArenaAllocFree) {
     Arena arena;
     arena_init(&arena, 10);
     i32* i32_ptr = arena_alloc<i32>(&arena, 2);
-    assert(i32_ptr != nullptr);
+    core_assert(i32_ptr != nullptr);
 
     i32* i32_ptr2 = arena_alloc<i32>(&arena, 2);
-    assert(i32_ptr2 != nullptr);
+    core_assert(i32_ptr2 != nullptr);
 
     arena_free(&arena);
 
     EXPECT_EQ(arena.current, nullptr);
+}
+
+TEST(Core, RingBuffer) {
+    Arena arena;
+    arena_init(&arena, 10);
+    defer(arena_free(&arena));
+
+    RingBuffer<i32> ring_buffer;
+    ring_buffer_init(&ring_buffer, 5, &arena);
+
+    ring_buffer_push_end(&ring_buffer, 1);
+    EXPECT_EQ(ring_buffer[0], 1);
+    EXPECT_EQ(ring_buffer.size, 1);
+
+    ring_buffer_push_end(&ring_buffer, 2);
+    EXPECT_EQ(ring_buffer[0], 1);
+    EXPECT_EQ(ring_buffer[1], 2);
+    EXPECT_EQ(ring_buffer.size, 2);
+
+    ring_buffer_pop_front(&ring_buffer);
+    EXPECT_EQ(ring_buffer[0], 2);
+    EXPECT_EQ(ring_buffer.size, 1);
+
+    ring_buffer_pop_front(&ring_buffer);
+    EXPECT_EQ(ring_buffer.size, 0);
+}
+
+TEST(Core, RingBufferWraparound) {
+    Arena arena;
+    arena_init(&arena, 10);
+    defer(arena_free(&arena));
+
+    RingBuffer<i32> ring_buffer;
+    ring_buffer_init(&ring_buffer, 5, &arena);
+
+    ring_buffer_push_end(&ring_buffer, 1);
+    EXPECT_EQ(ring_buffer[0], 1);
+    EXPECT_EQ(ring_buffer.size, 1);
+
+    ring_buffer_push_end(&ring_buffer, 2);
+    EXPECT_EQ(ring_buffer[1], 2);
+    EXPECT_EQ(ring_buffer.size, 2);
+
+    ring_buffer_push_end(&ring_buffer, 3);
+    EXPECT_EQ(ring_buffer[2], 3);
+    EXPECT_EQ(ring_buffer.size, 3);
+
+    ring_buffer_push_end(&ring_buffer, 4);
+    EXPECT_EQ(ring_buffer[3], 4);
+    EXPECT_EQ(ring_buffer.size, 4);
+
+    ring_buffer_push_end(&ring_buffer, 5);
+    EXPECT_EQ(ring_buffer[4], 5);
+    EXPECT_EQ(ring_buffer.size, 5);
+
+    EXPECT_EQ(ring_buffer_pop_front(&ring_buffer), 1);
+    EXPECT_EQ(ring_buffer_pop_front(&ring_buffer), 2);
+    EXPECT_EQ(ring_buffer_pop_front(&ring_buffer), 3);
+    EXPECT_EQ(ring_buffer.size, 2);
+    EXPECT_EQ(ring_buffer[0], 4);
+
+    ring_buffer_push_end(&ring_buffer, 6);
+    EXPECT_EQ(ring_buffer[2], 6);
+    EXPECT_EQ(ring_buffer.size, 3);
+
+    ring_buffer_push_end(&ring_buffer, 7);
+    EXPECT_EQ(ring_buffer[3], 7);
+    EXPECT_EQ(ring_buffer.size, 4);
+
+    ring_buffer_push_end(&ring_buffer, 8);
+    EXPECT_EQ(ring_buffer[4], 8);
+    EXPECT_EQ(ring_buffer.size, 5);
 }

@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 
 const char* source_hello_world = R"(
-main :: fn() {
+main :: fn(para: int, another) {
   if 1 + 34 * 3 / 2 - 1 == 7 && 1 != 2 || 3 < 4 || 5 > 6 && 1 <= 2 && 3 >= 4 {
     dbg("Hi")
   }
@@ -45,6 +45,31 @@ TEST(Tokenizer, ReadToken) {
     EXPECT_EQ(result.error, TokenizerErrorKind::None);
     EXPECT_EQ(result.token.kind, TokenKind::LParen);
     EXPECT_EQ(result.token.source, string_from_cstr("("));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Identifier);
+    EXPECT_EQ(result.token.source, string_from_cstr("para"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Colon);
+    EXPECT_EQ(result.token.source, string_from_cstr(":"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Identifier);
+    EXPECT_EQ(result.token.source, string_from_cstr("int"));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Comma);
+    EXPECT_EQ(result.token.source, string_from_cstr(","));
+
+    result = tokenizer_next_token(&tokenizer);
+    EXPECT_EQ(result.error, TokenizerErrorKind::None);
+    EXPECT_EQ(result.token.kind, TokenKind::Identifier);
+    EXPECT_EQ(result.token.source, string_from_cstr("another"));
 
     result = tokenizer_next_token(&tokenizer);
     EXPECT_EQ(result.error, TokenizerErrorKind::None);

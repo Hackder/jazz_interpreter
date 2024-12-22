@@ -20,57 +20,7 @@ enum class AstNodeKind {
 };
 
 // Only used for printing during testing with gtest
-inline std::ostream& operator<<(std::ostream& os, AstNodeKind kind) {
-    switch (kind) {
-    case AstNodeKind::Literal:
-        os << "Literal";
-        break;
-    case AstNodeKind::Identifier:
-        os << "Identifier";
-        break;
-    case AstNodeKind::Binary:
-        os << "Binary";
-        break;
-    case AstNodeKind::Unary:
-        os << "Unary";
-        break;
-    case AstNodeKind::Call:
-        os << "Call";
-        break;
-    case AstNodeKind::If:
-        os << "If";
-        break;
-    case AstNodeKind::For:
-        os << "For";
-        break;
-    case AstNodeKind::Break:
-        os << "Break";
-        break;
-    case AstNodeKind::Continue:
-        os << "Continue";
-        break;
-    case AstNodeKind::Return:
-        os << "Return";
-        break;
-    case AstNodeKind::Block:
-        os << "Block";
-        break;
-    case AstNodeKind::Parameter:
-        os << "Parameter";
-        break;
-    case AstNodeKind::Function:
-        os << "Function";
-        break;
-    case AstNodeKind::Declaration:
-        os << "Declaration";
-        break;
-    case AstNodeKind::Assignment:
-        os << "Assignment";
-        break;
-    }
-
-    return os;
-}
+std::ostream& operator<<(std::ostream& os, AstNodeKind kind);
 
 enum class AstLiteralKind {
     Integer,
@@ -79,172 +29,361 @@ enum class AstLiteralKind {
     Bool,
 };
 
-struct AstNode;
+struct AstNodeLiteral;
+struct AstNodeIdentifier;
+struct AstNodeBinary;
+struct AstNodeUnary;
+struct AstNodeCall;
+struct AstNodeIf;
+struct AstNodeFor;
+struct AstNodeBreak;
+struct AstNodeContinue;
+struct AstNodeReturn;
+struct AstNodeBlock;
+struct AstNodeParameter;
+struct AstNodeFunction;
+struct AstNodeDeclaration;
+struct AstNodeAssignment;
 
-struct AstNodeLiteral {
-    Token token;
-    AstLiteralKind kind;
+struct AstNode {
+    AstNodeKind kind;
+
+    AstNodeLiteral* as_literal();
+    AstNodeIdentifier* as_identifier();
+    AstNodeBinary* as_binary();
+    AstNodeUnary* as_unary();
+    AstNodeCall* as_call();
+    AstNodeIf* as_if();
+    AstNodeFor* as_for();
+    AstNodeBreak* as_break();
+    AstNodeContinue* as_continue();
+    AstNodeReturn* as_return();
+    AstNodeBlock* as_block();
+    AstNodeParameter* as_parameter();
+    AstNodeFunction* as_function();
+    AstNodeDeclaration* as_declaration();
+    AstNodeAssignment* as_assignment();
 };
 
-struct AstNodeIdentifier {
+struct AstNodeLiteral : public AstNode {
     Token token;
+    AstLiteralKind literal_kind;
+
+    static AstNodeLiteral* make(Token token, AstLiteralKind kind,
+                                Arena* arena) {
+        AstNodeLiteral* node = arena_alloc<AstNodeLiteral>(arena);
+        node->kind = AstNodeKind::Literal;
+        node->token = token;
+        node->literal_kind = kind;
+        return node;
+    }
 };
 
-struct AstNodeBinary {
+struct AstNodeIdentifier : public AstNode {
+    Token token;
+
+    static AstNodeIdentifier* make(Token token, Arena* arena) {
+        AstNodeIdentifier* node = arena_alloc<AstNodeIdentifier>(arena);
+        node->kind = AstNodeKind::Identifier;
+        node->token = token;
+        return node;
+    }
+};
+
+struct AstNodeBinary : public AstNode {
     Token token;
     AstNode* left;
     AstNode* right;
     TokenKind op;
+
+    static AstNodeBinary* make(AstNode* left, AstNode* right, Token token,
+                               Arena* arena) {
+        AstNodeBinary* node = arena_alloc<AstNodeBinary>(arena);
+        node->kind = AstNodeKind::Binary;
+        node->left = left;
+        node->right = right;
+        node->token = token;
+        node->op = token.kind;
+        return node;
+    }
 };
 
-struct AstNodeUnary {
+struct AstNodeUnary : public AstNode {
     Token token;
     AstNode* operand;
     TokenKind op;
+
+    static AstNodeUnary* make(AstNode* operand, Token token, Arena* arena) {
+        AstNodeUnary* node = arena_alloc<AstNodeUnary>(arena);
+        node->kind = AstNodeKind::Unary;
+        node->operand = operand;
+        node->token = token;
+        node->op = token.kind;
+        return node;
+    }
 };
 
-struct AstNodeCall {
+struct AstNodeCall : public AstNode {
     Token token;
     AstNode* callee;
     Array<AstNode*> arguments;
+
+    static AstNodeCall* make(AstNode* callee, Array<AstNode*> arguments,
+                             Token token, Arena* arena) {
+        AstNodeCall* node = arena_alloc<AstNodeCall>(arena);
+        node->kind = AstNodeKind::Call;
+        node->callee = callee;
+        node->arguments = arguments;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeIf {
+struct AstNodeIf : public AstNode {
     Token token;
     AstNode* condition;
     AstNode* then_branch;
     AstNode* else_branch;
+
+    static AstNodeIf* make(AstNode* condition, AstNode* then_branch,
+                           AstNode* else_branch, Token token, Arena* arena) {
+        AstNodeIf* node = arena_alloc<AstNodeIf>(arena);
+        node->kind = AstNodeKind::If;
+        node->condition = condition;
+        node->then_branch = then_branch;
+        node->else_branch = else_branch;
+        node->token = token;
+        return node;
+    }
 };
 
-// TODO(juraj): Handle ranged for loop syntax
+// TODO(juraj): public Handle ranged for loop syntax
 // for i in 0..10
 // for item in array
-struct AstNodeFor {
+struct AstNodeFor : public AstNode {
     Token token;
     AstNode* init;
     AstNode* condition;
     AstNode* update;
-    AstNode* body;
-    AstNode* else_branch;
+    AstNodeBlock* then_branch;
+    AstNodeBlock* else_branch;
+
+    static AstNodeFor* make(AstNode* init, AstNode* condition, AstNode* update,
+                            AstNodeBlock* then_branch,
+                            AstNodeBlock* else_branch, Token token,
+                            Arena* arena) {
+        AstNodeFor* node = arena_alloc<AstNodeFor>(arena);
+        node->kind = AstNodeKind::For;
+        node->init = init;
+        node->condition = condition;
+        node->update = update;
+        node->then_branch = then_branch;
+        node->else_branch = else_branch;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeBreak {
+struct AstNodeBreak : public AstNode {
     Token token;
     AstNode* value;
+
+    static AstNodeBreak* make(AstNode* value, Token token, Arena* arena) {
+        AstNodeBreak* node = arena_alloc<AstNodeBreak>(arena);
+        node->kind = AstNodeKind::Break;
+        node->value = value;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeContinue {
+struct AstNodeContinue : public AstNode {
     Token token;
+
+    static AstNodeContinue* make(Token token, Arena* arena) {
+        AstNodeContinue* node = arena_alloc<AstNodeContinue>(arena);
+        node->kind = AstNodeKind::Continue;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeReturn {
+struct AstNodeReturn : public AstNode {
     Token token;
     AstNode* value;
+
+    static AstNodeReturn* make(AstNode* value, Token token, Arena* arena) {
+        AstNodeReturn* node = arena_alloc<AstNodeReturn>(arena);
+        node->kind = AstNodeKind::Return;
+        node->value = value;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeBlock {
+struct AstNodeBlock : public AstNode {
     Token token;
     Array<AstNode*> statements;
+
+    static AstNodeBlock* make(Array<AstNode*> statements, Token token,
+                              Arena* arena) {
+        AstNodeBlock* node = arena_alloc<AstNodeBlock>(arena);
+        node->kind = AstNodeKind::Block;
+        node->statements = statements;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeParameter {
+struct AstNodeParameter : public AstNode {
     Token token;
-    AstNodeIdentifier name;
+    AstNodeIdentifier* name;
     AstNode* type;
+
+    static AstNodeParameter* make(AstNodeIdentifier* name, AstNode* type,
+                                  Token token, Arena* arena) {
+        AstNodeParameter* node = arena_alloc<AstNodeParameter>(arena);
+        node->kind = AstNodeKind::Parameter;
+        node->name = name;
+        node->type = type;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNodeFunction {
+struct AstNodeFunction : public AstNode {
     Token token;
-    AstNodeIdentifier name;
-    Array<AstNodeParameter> parameters;
+    Array<AstNodeParameter*> parameters;
     AstNode* return_type;
-    AstNodeBlock body;
+    AstNodeBlock* body;
+
+    static AstNodeFunction* make(Array<AstNodeParameter*> parameters,
+                                 AstNode* return_type, AstNodeBlock* body,
+                                 Token token, Arena* arena) {
+        AstNodeFunction* node = arena_alloc<AstNodeFunction>(arena);
+        node->kind = AstNodeKind::Function;
+        node->parameters = parameters;
+        node->return_type = return_type;
+        node->body = body;
+        node->token = token;
+        return node;
+    }
 };
 
 enum class AstDeclarationKind { Variable, Constant };
 
-struct AstNodeDeclaration {
-    AstNodeIdentifier name;
+struct AstNodeDeclaration : public AstNode {
+    AstNodeIdentifier* name;
     AstNode* type;
     AstNode* value;
-    AstDeclarationKind kind;
+    AstDeclarationKind decl_kind;
+
+    static AstNodeDeclaration* make(AstNodeIdentifier* name, AstNode* type,
+                                    AstNode* value, AstDeclarationKind kind,
+                                    Arena* arena) {
+        AstNodeDeclaration* node = arena_alloc<AstNodeDeclaration>(arena);
+        node->kind = AstNodeKind::Declaration;
+        node->name = name;
+        node->type = type;
+        node->value = value;
+        node->decl_kind = kind;
+        return node;
+    }
 };
 
-struct AstNodeAssignment {
+struct AstNodeAssignment : public AstNode {
     Token token;
-    AstNodeIdentifier name;
+    AstNodeIdentifier* name;
     AstNode* value;
+
+    static AstNodeAssignment* make(AstNodeIdentifier* name, AstNode* value,
+                                   Token token, Arena* arena) {
+        AstNodeAssignment* node = arena_alloc<AstNodeAssignment>(arena);
+        node->kind = AstNodeKind::Assignment;
+        node->name = name;
+        node->value = value;
+        node->token = token;
+        return node;
+    }
 };
 
-struct AstNode {
-    AstNodeKind kind;
-    union {
-        AstNodeLiteral literal;
-        AstNodeIdentifier identifier;
-        AstNodeBinary binary_expr;
-        AstNodeUnary unary_expr;
-        AstNodeCall call_expr;
-        AstNodeIf if_expr;
-        AstNodeFor for_expr;
-        AstNodeBreak break_expr;
-        AstNodeContinue continue_expr;
-        AstNodeReturn return_expr;
-        AstNodeBlock block;
-        AstNodeParameter parameter;
-        AstNodeFunction function;
-        AstNodeDeclaration declaration;
-        AstNodeAssignment assignment;
-    };
-};
+inline AstNodeLiteral* AstNode::as_literal() {
+    core_assert(this->kind == AstNodeKind::Literal);
+    return static_cast<AstNodeLiteral*>(this);
+}
+
+inline AstNodeIdentifier* AstNode::as_identifier() {
+    core_assert(this->kind == AstNodeKind::Identifier);
+    return static_cast<AstNodeIdentifier*>(this);
+}
+
+inline AstNodeBinary* AstNode::as_binary() {
+    core_assert(this->kind == AstNodeKind::Binary);
+    return static_cast<AstNodeBinary*>(this);
+}
+
+inline AstNodeUnary* AstNode::as_unary() {
+    core_assert(this->kind == AstNodeKind::Unary);
+    return static_cast<AstNodeUnary*>(this);
+}
+
+inline AstNodeCall* AstNode::as_call() {
+    core_assert(this->kind == AstNodeKind::Call);
+    return static_cast<AstNodeCall*>(this);
+}
+
+inline AstNodeIf* AstNode::as_if() {
+    core_assert(this->kind == AstNodeKind::If);
+    return static_cast<AstNodeIf*>(this);
+}
+
+inline AstNodeFor* AstNode::as_for() {
+    core_assert(this->kind == AstNodeKind::For);
+    return static_cast<AstNodeFor*>(this);
+}
+
+inline AstNodeBreak* AstNode::as_break() {
+    core_assert(this->kind == AstNodeKind::Break);
+    return static_cast<AstNodeBreak*>(this);
+}
+
+inline AstNodeContinue* AstNode::as_continue() {
+    core_assert(this->kind == AstNodeKind::Continue);
+    return static_cast<AstNodeContinue*>(this);
+}
+
+inline AstNodeReturn* AstNode::as_return() {
+    core_assert(this->kind == AstNodeKind::Return);
+    return static_cast<AstNodeReturn*>(this);
+}
+
+inline AstNodeBlock* AstNode::as_block() {
+    core_assert(this->kind == AstNodeKind::Block);
+    return static_cast<AstNodeBlock*>(this);
+}
+
+inline AstNodeParameter* AstNode::as_parameter() {
+    core_assert(this->kind == AstNodeKind::Parameter);
+    return static_cast<AstNodeParameter*>(this);
+}
+
+inline AstNodeFunction* AstNode::as_function() {
+    core_assert(this->kind == AstNodeKind::Function);
+    return static_cast<AstNodeFunction*>(this);
+}
+
+inline AstNodeDeclaration* AstNode::as_declaration() {
+    core_assert(this->kind == AstNodeKind::Declaration);
+    return static_cast<AstNodeDeclaration*>(this);
+}
+
+inline AstNodeAssignment* AstNode::as_assignment() {
+    core_assert(this->kind == AstNodeKind::Assignment);
+    return static_cast<AstNodeAssignment*>(this);
+}
 
 struct Ast {
     Array<AstNode*> declarations;
 };
-
-inline AstNode* ast_literal_make(Token token, AstLiteralKind kind,
-                                 Arena* arena) {
-    AstNode* node = arena_alloc<AstNode>(arena);
-    node->kind = AstNodeKind::Literal;
-    node->literal.token = token;
-    node->literal.kind = kind;
-    return node;
-}
-
-inline AstNode* ast_identifier_make(Token token, Arena* arena) {
-    AstNode* node = arena_alloc<AstNode>(arena);
-    node->kind = AstNodeKind::Identifier;
-    node->identifier.token = token;
-    return node;
-}
-
-inline AstNode* ast_binary_make(AstNode* left, AstNode* right, Token token,
-                                Arena* arena) {
-    AstNode* node = arena_alloc<AstNode>(arena);
-    node->kind = AstNodeKind::Binary;
-    node->binary_expr.left = left;
-    node->binary_expr.right = right;
-    node->binary_expr.token = token;
-    return node;
-}
-
-inline AstNode* ast_unary_make(AstNode* operand, Token token, Arena* arena) {
-    AstNode* node = arena_alloc<AstNode>(arena);
-    node->kind = AstNodeKind::Unary;
-    node->unary_expr.operand = operand;
-    node->unary_expr.token = token;
-    return node;
-}
-
-inline AstNode* ast_declaration_make(AstNodeIdentifier name, AstNode* type,
-                                     AstNode* value, AstDeclarationKind kind,
-                                     Arena* arena) {
-    AstNode* node = arena_alloc<AstNode>(arena);
-    node->kind = AstNodeKind::Declaration;
-    node->declaration.name = name;
-    node->declaration.type = type;
-    node->declaration.value = value;
-    node->declaration.kind = kind;
-    return node;
-}
 
 String ast_serialize_debug(AstNode* node, Arena* arena);
