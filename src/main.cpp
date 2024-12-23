@@ -53,9 +53,20 @@ int main(int argc, char* argv[]) {
     AstFile* file = ast_file_make(tokenizer, 16, &arena);
     ast_file_parse(file, &arena);
 
-    for (isize i = 0; i < file->errors.size; i++) {
-        ParseError error = file->errors[i];
-        std::cerr << error.token.kind << ": " << error.message << std::endl;
+    if (file->errors.size > 0) {
+        TokenLocator locator;
+        token_locator_init(&locator, source_code, &arena);
+
+        for (isize i = 0; i < file->errors.size; i++) {
+            ParseError error = file->errors[i];
+            Array<String> parts =
+                parse_error_pretty_print(&error, &locator, &arena);
+
+            for (isize j = 0; j < parts.size; j++) {
+                std::cout << parts[j];
+            }
+            return 1;
+        }
         return 1;
     }
 

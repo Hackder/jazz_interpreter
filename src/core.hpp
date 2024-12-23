@@ -206,6 +206,15 @@ inline String string_from_cstr(const char* cstr) {
     return String{.data = cstr, .size = (isize)strlen(cstr)};
 }
 
+inline String string_from_cstr_alloc(const char* cstr, Arena* arena) {
+    isize size = (isize)strlen(cstr);
+    char* data = arena_alloc<char>(arena, size + 1);
+    memcpy(data, cstr, size);
+    data[size] = '\0';
+
+    return String{.data = data, .size = size};
+}
+
 inline String string_substr(String str, isize start, isize count) {
     core_assert_msg(start >= 0, "%ld < 0", start);
     core_assert_msg(start + count <= str.size, "%ld + %ld > %ld", start, count,

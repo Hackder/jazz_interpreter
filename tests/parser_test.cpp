@@ -427,9 +427,26 @@ TEST(Parser, SimpleErrors) {
     AstFile* file = setup_ast_file(source, &arena);
 
     parse_statement(file, &arena);
-    for (int i = 0; i < file->errors.size; i++) {
-        ParseError error = file->errors[i];
-        std::cerr << error.token.kind << ": " << error.message << std::endl;
-    }
+    ParseError error = file->errors[0];
+    EXPECT_EQ(error.token.kind, TokenKind::Newline);
+    EXPECT_STREQ(error.message.data, "Unexpected token within expression");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, AssignmentInvalid) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        main :: fn() {
+          a + 1 := somethign
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    parse_statement(file, &arena);
+    ParseError error = file->errors[0];
+    EXPECT_EQ(error.token.kind, TokenKind::Newline);
+    EXPECT_STREQ(error.message.data, "Unexpected token within expression");
     EXPECT_TRUE(ast_file_exhausted(file));
 }

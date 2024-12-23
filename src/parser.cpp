@@ -1,5 +1,6 @@
 #include "parser.hpp"
 #include "core.hpp"
+#include <cstdio>
 #include <iostream>
 
 #define check_condition(cond, token, message)                                  \
@@ -553,6 +554,7 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
             return expr;
         }
         default:
+            next_token(file);
             check_condition(false, next, "Expected a statement");
         }
     }
@@ -568,4 +570,44 @@ void ast_file_parse(AstFile* file, Arena* arena) {
         skip_newlines(file);
         tok = peek_token(file);
     }
+}
+
+/// ------------------
+/// Errors
+/// ------------------
+
+Array<String> parse_error_pretty_print(ParseError* error, TokenLocator* locator,
+                                       Arena* arena) {
+    Array<String> parts;
+    array_init(&parts, 8, arena);
+
+    TokenPos pos = token_locator_pos(locator, error->token);
+    String line = token_locator_get_line(locator, pos.line);
+
+    char buffer[1024] = {};
+    snprintf(buffer, 1024, "     ┌─ Error at line: %ld on column %ld\n",
+             pos.line, pos.column);
+    String first_line = string_from_cstr_alloc(buffer, arena);
+    array_push(&parts, first_line);
+
+    snprintf(buffer, 1024, "%5ld│ ", pos.line);
+    String line_number = string_from_cstr_alloc(buffer, arena);
+    array_push(&parts, line_number);
+
+    array_push(&parts, line);
+
+    char* caret_line = arena_alloc<char>(arena, error->token.source.size + 1);
+    memset(caret_line, '^', error->token.source.size);
+
+    snprintf(buffer, 1024, "\n     │ %*c%s\n", (int)pos.column, ' ',
+             caret_line);
+    String caret = string_from_cstr_alloc(buffer, arena);
+    array_push(&parts, caret);
+
+    snprintf(buffer, 1024, "     └─ %.*s\n", (int)error->message.size,
+             error->message.data);
+    String message = string_from_cstr_alloc(buffer, arena);
+    array_push(&parts, message);
+
+    return parts;
 }

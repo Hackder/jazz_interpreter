@@ -28,6 +28,8 @@ add_executable(
   ./src/ast.cpp
   ./src/parser.hpp
   ./src/parser.cpp
+  ./src/token_pos.hpp
+  ./src/token_pos.cpp
   ./src/main.cpp
 )
 target_compile_options(jazz PRIVATE)
@@ -41,9 +43,12 @@ add_executable(
   ./src/ast.cpp
   ./src/parser.hpp
   ./src/parser.cpp
+  ./src/token_pos.hpp
+  ./src/token_pos.cpp
   ./tests/core_test.cpp
   ./tests/tokenizer_test.cpp
   ./tests/parser_test.cpp
+  ./tests/token_pos_test.cpp
 )
 target_compile_options(jazz_test PRIVATE)
 

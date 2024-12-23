@@ -1,10 +1,14 @@
 #include "ast.hpp"
 #include "core.hpp"
+#include "token_pos.hpp"
 
 struct ParseError {
     Token token;
     String message;
 };
+
+Array<String> parse_error_pretty_print(ParseError* error, TokenLocator* locator,
+                                       Arena* arena);
 
 struct AstFile {
     Tokenizer tokenizer;
