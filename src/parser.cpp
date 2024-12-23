@@ -561,10 +561,11 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
 
 void ast_file_parse(AstFile* file, Arena* arena) {
     Token tok = peek_token(file);
+    skip_newlines(file);
     while (tok.kind != TokenKind::Eof) {
-        skip_newlines(file);
         AstNode* declaration = parse_declaration(file, arena);
         array_push(&file->ast->declarations, declaration);
+        skip_newlines(file);
         tok = peek_token(file);
     }
 }
