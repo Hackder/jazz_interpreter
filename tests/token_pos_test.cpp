@@ -27,9 +27,37 @@ TEST(TokenPos, TokenPos) {
     TokenLocator locator;
     token_locator_init(&locator, source, &arena);
 
-    TokenPos pos = token_locator_pos(&locator, string_substr(source, 8, 3));
-    EXPECT_EQ(pos.line, 2);
-    EXPECT_EQ(pos.column, 3);
+    {
+        String token = string_substr(source, 8, 3);
+        EXPECT_EQ(token, string_from_cstr("rld"));
+        TokenPos pos = token_locator_pos(&locator, token);
+        EXPECT_EQ(pos.line, 2);
+        EXPECT_EQ(pos.column, 3);
+    }
+
+    {
+        String token = string_substr(source, 0, 1);
+        EXPECT_EQ(token, string_from_cstr("h"));
+        TokenPos pos = token_locator_pos(&locator, token);
+        EXPECT_EQ(pos.line, 1);
+        EXPECT_EQ(pos.column, 1);
+    }
+
+    {
+        String token = string_substr(source, 11, 4);
+        EXPECT_EQ(token, string_from_cstr("\nsom"));
+        TokenPos pos = token_locator_pos(&locator, token);
+        EXPECT_EQ(pos.line, 2);
+        EXPECT_EQ(pos.column, 6);
+    }
+
+    {
+        String token = string_substr(source, 18, 3);
+        EXPECT_EQ(token, string_from_cstr("ing"));
+        TokenPos pos = token_locator_pos(&locator, token);
+        EXPECT_EQ(pos.line, 3);
+        EXPECT_EQ(pos.column, 7);
+    }
 }
 
 TEST(TokenPos, GetLine) {

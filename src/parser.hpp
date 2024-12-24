@@ -5,6 +5,7 @@
 struct ParseError {
     Token token;
     String message;
+    String detail;
 };
 
 Array<String> parse_error_pretty_print(ParseError* error, TokenLocator* locator,

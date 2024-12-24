@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
             for (isize j = 0; j < parts.size; j++) {
                 std::cout << parts[j];
             }
-            return 1;
+            std::cout << std::endl;
         }
         return 1;
     }

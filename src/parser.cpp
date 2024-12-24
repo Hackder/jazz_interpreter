@@ -1,18 +1,19 @@
 #include "parser.hpp"
 #include "core.hpp"
 #include <cstdio>
-#include <iostream>
 
-#define check_condition(cond, token, message)                                  \
-    if (!(cond)) {                                                             \
-        report_error(file, token, message);                                    \
+#define report_error_if(cond, token, message, detail)                          \
+    if (cond) {                                                                \
+        report_error(file, token, message, detail);                            \
         return nullptr;                                                        \
     }
 
-void report_error(AstFile* file, Token token, const char* message) {
+void report_error(AstFile* file, Token token, const char* message,
+                  const char* detail) {
     ParseError error = {
         .token = token,
         .message = string_from_cstr(message),
+        .detail = string_from_cstr(detail),
     };
 
     array_push(&file->errors, error);
@@ -30,13 +31,16 @@ Token peek_token(AstFile* file, isize index = 1) {
             break;
         }
         case TokenizerErrorKind::UnclosedString: {
-            report_error(file, token.token, "Unclosed string  literal");
+            report_error(file, token.token, "No closing '\"' for this string",
+                         "Unclosed string literal, string literals must start "
+                         "and end with '\"\'.");
             ring_buffer_push_end(
                 &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
             break;
         }
         case TokenizerErrorKind::InvalidCharacter: {
-            report_error(file, token.token, "Invalid character");
+            report_error(file, token.token, "Invalid character",
+                         "This character is not allowed here, maybe a typo?");
             ring_buffer_push_end(
                 &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
             break;
@@ -61,7 +65,8 @@ AstNode* parse_type(AstFile* file, Arena* arena) {
 
     // TODO(juraj): support for function type literals
     // fn(int, int) -> int
-    report_error(file, tok, "Expected a type");
+    report_error(file, tok, "Expected a type",
+                 "Type must be a single identifier");
     return nullptr;
 }
 
@@ -142,9 +147,17 @@ void skip_newlines(AstFile* file) {
     }
 }
 
+void skip_to_next_line(AstFile* file) {
+    Token tok = next_token(file);
+    while (tok.kind != TokenKind::Newline && tok.kind != TokenKind::Eof) {
+        tok = next_token(file);
+    }
+}
+
 AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
-    check_condition(tok.kind == TokenKind::LBrace, tok, "Expected '{'");
+    report_error_if(tok.kind != TokenKind::LBrace, tok, "Expected '{'",
+                    "Expected the start of a code block");
 
     Array<AstNode*> statements;
     array_init<AstNode*>(&statements, 16, arena);
@@ -156,10 +169,16 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
             break;
         }
 
-        check_condition(next.kind != TokenKind::Eof, next,
-                        "Unexpected end of file, block not closed properly");
+        report_error_if(next.kind == TokenKind::Eof, next,
+                        "Unexpected end of file",
+                        "Source file has ended before the current code block "
+                        "was closed. Make sure you are not missing a '}'");
 
         AstNode* statement = parse_statement(file, arena);
+        if (statement == nullptr) {
+            skip_to_next_line(file);
+        }
+
         array_push<AstNode*>(&statements, statement);
     }
 
@@ -171,11 +190,14 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
 
 AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
     Token fn_keyword = next_token(file);
-    check_condition(fn_keyword.kind == TokenKind::Func, fn_keyword,
-                    "Expected 'fn' keyword (a function definition)");
+    report_error_if(fn_keyword.kind != TokenKind::Func, fn_keyword,
+                    "Unexpected token",
+                    "Expected 'fn' the start of a function definition");
 
     Token tok = next_token(file);
-    check_condition(tok.kind == TokenKind::LParen, tok, "Expected '('");
+    report_error_if(
+        tok.kind != TokenKind::LParen, tok, "Expected '('",
+        "Expected a list of function parameters, enclosed in parentheses");
 
     Array<AstNodeParameter*> parameters;
     array_init(&parameters, 8, arena);
@@ -187,8 +209,9 @@ AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
         }
 
         Token name = next_token(file);
-        check_condition(name.kind == TokenKind::Identifier, name,
-                        "Expacted a valid identifier")
+        report_error_if(name.kind != TokenKind::Identifier, name,
+                        "Invalid parameter list",
+                        "Parameter name must be an identifier")
 
             next = peek_token(file);
 
@@ -257,7 +280,9 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
         AstNode* inner = parse_expression(file, true, arena);
 
         tok = next_token(file);
-        check_condition(tok.kind == TokenKind::RParen, tok, "Expected ')'");
+        report_error_if(tok.kind != TokenKind::RParen, tok, "Expected ')'",
+                        "Only one expression can be enclosed in a single pair "
+                        "of parentheses. There should be a closing ')' here.");
         return inner;
     }
     // Unary operators
@@ -308,22 +333,25 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
                     break;
                 }
 
-                check_condition(
-                    next.kind != TokenKind::Eof, next,
-                    "Unexpected end of file within 'for' definition");
+                report_error_if(next.kind == TokenKind::Eof, next,
+                                "Unexpected end of file",
+                                "After the 'for' definition, there should be a "
+                                "block of code enclosed in '{' and '}'");
             }
 
             if (number_of_semicolons == 2) {
                 init = parse_statement(file, arena);
                 Token tok = next_token(file);
-                check_condition(
-                    tok.kind == TokenKind::Semicolon, tok,
-                    "For definitions must be separated by semicolons");
+                report_error_if(
+                    tok.kind != TokenKind::Semicolon, tok,
+                    "Expected a semicolon here",
+                    "The first part of a for loop can be only one statement.");
                 condition = parse_expression(file, false, arena);
                 tok = next_token(file);
-                check_condition(
-                    tok.kind == TokenKind::Semicolon, tok,
-                    "For definitions must be separated by semicolons");
+                report_error_if(
+                    tok.kind != TokenKind::Semicolon, tok,
+                    "Expected a semicolon here",
+                    "The second part of a for loop can be only one expression");
                 update = parse_statement(file, arena);
             }
 
@@ -347,9 +375,22 @@ AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
     case TokenKind::Func: {
         return parse_function_expression(file, arena);
     }
+    case TokenKind::Newline: {
+        if (!allow_newlines) {
+            report_error(
+                file, tok, "Unexpected newline",
+                "Newlines are not allowed within this expression. If you want "
+                "to split it into multiple lines, enclose it in parentheses.");
+            return nullptr;
+        }
+        /* fallthrough */
+    }
     // Invalid
     default: {
-        check_condition(false, tok, "Unexpected token within expression");
+        report_error(
+            file, tok, "Unexpected token",
+            "Expected an expression operant, but found something else.");
+        return nullptr;
     }
     }
 }
@@ -396,7 +437,10 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence,
             next_token(file);
             Array<AstNode*> arguments = parse_function_arguments(file, arena);
             tok = next_token(file);
-            check_condition(tok.kind == TokenKind::RParen, tok, "Expected ')'");
+            report_error_if(tok.kind != TokenKind::RParen, tok,
+                            "Expected ')' here",
+                            "When calling a function, the arguments must be "
+                            "enclosed in parentheses.");
 
             AstNodeCall* call = AstNodeCall::make(left, arguments, tok, arena);
             left = call;
@@ -413,8 +457,10 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence,
             next_token(file);
             AstNode* index = parse_expression(file, true, arena);
             Token next = next_token(file);
-            check_condition(next.kind == TokenKind::RBracket, next,
-                            "Expected ']'");
+            report_error_if(next.kind != TokenKind::RBracket, next,
+                            "Expected ']' here",
+                            "Array access must be enclosed "
+                            "in square brackets.");
 
             AstNodeBinary* binary =
                 AstNodeBinary::make(left, index, tok, arena);
@@ -447,12 +493,16 @@ AstNode* parse_expression(AstFile* file, bool allow_newlines, Arena* arena) {
 
 AstNode* parse_declaration(AstFile* file, Arena* arena) {
     Token tok = next_token(file);
-    check_condition(tok.kind == TokenKind::Identifier, tok,
-                    "Expected an identifier");
+    report_error_if(
+        tok.kind != TokenKind::Identifier, tok, "Expected an identifier",
+        "There should be a declaration name here, which is an identifier. "
+        "Declarations are in the for of 'name := value' or 'name :: value'");
     AstNodeIdentifier* name = AstNodeIdentifier::make(tok, arena);
 
     Token colon = next_token(file);
-    check_condition(colon.kind == TokenKind::Colon, colon, "Expected ':'");
+    report_error_if(colon.kind != TokenKind::Colon, colon, "Expected ':'",
+                    "After a declaration name, there should be a ':' which "
+                    "signifies that it is a declaration");
 
     AstNode* type = nullptr;
     tok = next_token(file);
@@ -473,7 +523,10 @@ AstNode* parse_declaration(AstFile* file, Arena* arena) {
                                         AstDeclarationKind::Variable, arena);
     }
 
-    check_condition(false, tok, "Expected ':' or '='");
+    report_error(file, tok, "Expected ':' or '='",
+                 "You can either declare a variable with 'name := value' or a "
+                 "constant with 'name :: value'");
+    return nullptr;
 }
 
 bool ast_node_is_assignable(AstNode* node) {
@@ -533,18 +586,30 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
     }
     default: {
         AstNode* expr = parse_expression(file, false, arena);
+        if (expr == nullptr) {
+            next_token(file);
+        }
+
         Token next = peek_token(file);
 
         switch (next.kind) {
         case TokenKind::Assign: {
             next_token(file);
             AstNode* value = parse_expression(file, false, arena);
-            check_condition(ast_node_is_assignable(expr), next,
-                            "Left-hand side of assignment must be assignable");
+            report_error_if(
+                ast_node_is_assignable(expr) == false, next,
+                "Invalid left-hand side",
+                "Left hand side of this assignment is not of a valid form. You "
+                "can only assign to a variable, struct field, or array "
+                "element. More complex expressions are not allowed.");
             return AstNodeAssignment::make(expr, value, next, arena);
         }
+        case TokenKind::Colon: {
+            report_error(file, next, "Invalid declaration",
+                         "Left hand side of a declaration must be an "
+                         "identifier. It can't be a complex expression.");
+        }
         case TokenKind::Newline: {
-            next_token(file);
             return expr;
         }
         case TokenKind::RBrace: {
@@ -554,8 +619,7 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
             return expr;
         }
         default:
-            next_token(file);
-            check_condition(false, next, "Expected a statement");
+            return expr;
         }
     }
     }
@@ -599,13 +663,13 @@ Array<String> parse_error_pretty_print(ParseError* error, TokenLocator* locator,
     char* caret_line = arena_alloc<char>(arena, error->token.source.size + 1);
     memset(caret_line, '^', error->token.source.size);
 
-    snprintf(buffer, 1024, "\n     │ %*c%s\n", (int)pos.column, ' ',
-             caret_line);
+    snprintf(buffer, 1024, "\n     │ %*c%s %.*s\n", (int)pos.column - 1, ' ',
+             caret_line, (int)error->message.size, error->message.data);
     String caret = string_from_cstr_alloc(buffer, arena);
     array_push(&parts, caret);
 
-    snprintf(buffer, 1024, "     └─ %.*s\n", (int)error->message.size,
-             error->message.data);
+    snprintf(buffer, 1024, "     └─ %.*s\n", (int)error->detail.size,
+             error->detail.data);
     String message = string_from_cstr_alloc(buffer, arena);
     array_push(&parts, message);
 

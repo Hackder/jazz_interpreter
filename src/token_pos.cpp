@@ -39,7 +39,7 @@ TokenPos token_locator_pos(TokenLocator* locator, String token) {
     if (pos.line == 0) {
         pos.column = position + 1;
     } else {
-        pos.column = position - locator->line_offsets[pos.line - 1];
+        pos.column = position - locator->line_offsets[pos.line - 1] + 1;
     }
 
     pos.line += 1;
