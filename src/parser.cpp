@@ -2,6 +2,16 @@
 #include "core.hpp"
 #include <cstdio>
 
+#define record_parse_depth(file)                                               \
+    file->parse_depth += 1;                                                    \
+    defer(file->parse_depth -= 1);                                             \
+    if (file->parse_depth > 100) {                                             \
+        report_error(file, peek_token(file), "Stack overflow",                 \
+                     "The parser has reached its maximum recursion depth. "    \
+                     "You are probably doing something nasty");                \
+        return nullptr;                                                        \
+    }
+
 #define report_error_if(cond, token, message, detail)                          \
     if (cond) {                                                                \
         report_error(file, token, message, detail);                            \
@@ -22,6 +32,12 @@ void report_error(AstFile* file, Token token, const char* message,
 Token peek_token(AstFile* file, isize index = 1) {
     core_assert(index > 0);
 
+    file->consequent_peeks += 1;
+    // Detect infinite loops within the parser
+    core_assert(file->consequent_peeks <= 10'000);
+
+    bool reported_error = false;
+
     while (file->tokens.size < index) {
         TokenizerResult token = tokenizer_next_token(&file->tokenizer);
 
@@ -31,19 +47,21 @@ Token peek_token(AstFile* file, isize index = 1) {
             break;
         }
         case TokenizerErrorKind::UnclosedString: {
+            if (reported_error) {
+                continue;
+            }
+            reported_error = true;
             report_error(file, token.token, "No closing '\"' for this string",
                          "Unclosed string literal, string literals must start "
                          "and end with '\"\'.");
-            ring_buffer_push_end(
-                &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
-            break;
         }
         case TokenizerErrorKind::InvalidCharacter: {
+            if (reported_error) {
+                continue;
+            }
+            reported_error = true;
             report_error(file, token.token, "Invalid character",
                          "This character is not allowed here, maybe a typo?");
-            ring_buffer_push_end(
-                &file->tokens, Token{TokenKind::Invalid, string_from_cstr("")});
-            break;
         }
         }
     }
@@ -54,10 +72,12 @@ Token peek_token(AstFile* file, isize index = 1) {
 Token next_token(AstFile* file) {
     Token tok = peek_token(file);
     ring_buffer_pop_front(&file->tokens);
+    file->consequent_peeks = 0;
     return tok;
 }
 
 AstNode* parse_type(AstFile* file, Arena* arena) {
+    record_parse_depth(file);
     Token tok = next_token(file);
     if (tok.kind == TokenKind::Identifier) {
         return AstNodeIdentifier::make(tok, arena);
@@ -139,22 +159,33 @@ isize operator_precedence(Token tok) {
 
 AstNode* parse_expression(AstFile* file, bool allow_newlines, Arena* arena);
 
-void skip_newlines(AstFile* file) {
+isize skip_newlines(AstFile* file) {
+    isize skipped = 0;
     Token tok = peek_token(file);
     while (tok.kind == TokenKind::Newline) {
+        next_token(file);
+        skipped += 1;
+        tok = peek_token(file);
+    }
+
+    return skipped;
+}
+
+void skip_to_next_line_or(AstFile* file, TokenKind kind) {
+    Token tok = peek_token(file);
+    while (tok.kind != TokenKind::Newline && tok.kind != TokenKind::Eof &&
+           tok.kind != kind) {
         next_token(file);
         tok = peek_token(file);
     }
 }
 
 void skip_to_next_line(AstFile* file) {
-    Token tok = next_token(file);
-    while (tok.kind != TokenKind::Newline && tok.kind != TokenKind::Eof) {
-        tok = next_token(file);
-    }
+    skip_to_next_line_or(file, TokenKind::Eof);
 }
 
 AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
+    record_parse_depth(file);
     Token tok = next_token(file);
     report_error_if(tok.kind != TokenKind::LBrace, tok, "Expected '{'",
                     "Expected the start of a code block");
@@ -162,8 +193,9 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
     Array<AstNode*> statements;
     array_init<AstNode*>(&statements, 16, arena);
 
+    skip_newlines(file);
+
     while (true) {
-        skip_newlines(file);
         Token next = peek_token(file);
         if (next.kind == TokenKind::RBrace) {
             break;
@@ -180,6 +212,19 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
         }
 
         array_push<AstNode*>(&statements, statement);
+
+        next = peek_token(file);
+        if (next.kind == TokenKind::RBrace) {
+            break;
+        }
+
+        isize skipped = skip_newlines(file);
+        if (skipped == 0) {
+            report_error(
+                file, next, "Expected newline",
+                "Statements within a code block must be separated by newlines");
+            skip_to_next_line_or(file, TokenKind::RBrace);
+        }
     }
 
     tok = next_token(file);
@@ -189,6 +234,7 @@ AstNodeBlock* parse_block(AstFile* file, Arena* arena) {
 }
 
 AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
+    record_parse_depth(file);
     Token fn_keyword = next_token(file);
     report_error_if(fn_keyword.kind != TokenKind::Func, fn_keyword,
                     "Unexpected token",
@@ -253,6 +299,7 @@ AstNodeFunction* parse_function_expression(AstFile* file, Arena* arena) {
 // expressions.
 AstNode* parse_expression_operand(AstFile* file, bool allow_newlines,
                                   Arena* arena) {
+    record_parse_depth(file);
     if (allow_newlines) {
         skip_newlines(file);
     }
@@ -411,7 +458,17 @@ Array<AstNode*> parse_function_arguments(AstFile* file, Arena* arena) {
         tok = peek_token(file);
         if (tok.kind == TokenKind::Comma) {
             next_token(file);
+            continue;
         }
+
+        if (tok.kind == TokenKind::RParen) {
+            break;
+        }
+
+        report_error(file, tok, "Expected ',' or ')'",
+                     "When calling a function, the arguments must be separated "
+                     "by commas and enclosed in parentheses.");
+        return arguments;
     }
 
     return arguments;
@@ -419,6 +476,7 @@ Array<AstNode*> parse_function_arguments(AstFile* file, Arena* arena) {
 
 AstNode* parse_expression_rec(AstFile* file, isize precedence,
                               bool allow_newlines, Arena* arena) {
+    record_parse_depth(file);
     AstNode* left = parse_expression_operand(file, allow_newlines, arena);
 
     while (true) {
@@ -488,10 +546,12 @@ AstNode* parse_expression_rec(AstFile* file, isize precedence,
 }
 
 AstNode* parse_expression(AstFile* file, bool allow_newlines, Arena* arena) {
+    record_parse_depth(file);
     return parse_expression_rec(file, 0, allow_newlines, arena);
 }
 
 AstNode* parse_declaration(AstFile* file, Arena* arena) {
+    record_parse_depth(file);
     Token tok = next_token(file);
     report_error_if(
         tok.kind != TokenKind::Identifier, tok, "Expected an identifier",
@@ -561,6 +621,7 @@ bool ast_node_is_assignable(AstNode* node) {
 AstNode* parse_statement(AstFile* file, Arena* arena) {
     core_assert(file);
     core_assert(arena);
+    record_parse_depth(file);
 
     skip_newlines(file);
     Token tok = peek_token(file);
@@ -630,6 +691,9 @@ void ast_file_parse(AstFile* file, Arena* arena) {
     skip_newlines(file);
     while (tok.kind != TokenKind::Eof) {
         AstNode* declaration = parse_declaration(file, arena);
+        if (declaration == nullptr) {
+            skip_to_next_line(file);
+        }
         array_push(&file->ast->declarations, declaration);
         skip_newlines(file);
         tok = peek_token(file);

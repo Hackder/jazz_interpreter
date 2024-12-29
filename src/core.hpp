@@ -50,7 +50,11 @@ using isize = ptrdiff_t;
 /// Assert
 /// ------------------
 
+#ifndef LIBFUZZER
 #define core_debug_trap() __builtin_trap()
+#else
+#define core_debug_trap() std::abort()
+#endif
 
 #ifndef core_assert_msg
 #define core_assert_msg(cond, msg, ...)                                        \
@@ -131,7 +135,7 @@ template <typename T> inline T* arena_alloc(Arena* arena, isize count = 1) {
         return (T*)result;
     }
 
-    isize new_capacity = std::max(arena->block_size_min, new_size);
+    isize new_capacity = std::max(arena->block_size_min, alloc_size);
     MemoryBlock* new_block = memory_block_create(new_capacity);
 
     new_block->prev = arena->current;
@@ -151,6 +155,17 @@ inline void arena_free(Arena* arena) {
     }
 
     arena->current = nullptr;
+}
+
+inline isize arena_get_size(Arena* arena) {
+    isize size = 0;
+    MemoryBlock* block = arena->current;
+    while (block) {
+        size += block->size;
+        block = block->prev;
+    }
+
+    return size;
 }
 
 /// ------------------

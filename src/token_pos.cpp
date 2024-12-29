@@ -14,9 +14,12 @@ void token_locator_init(TokenLocator* locator, String source, Arena* arena) {
 }
 
 TokenPos token_locator_pos(TokenLocator* locator, String token) {
-    core_assert(locator->source.data <= token.data);
-    core_assert(locator->source.data + locator->source.size >=
-                token.data + token.size);
+    core_assert_msg(locator->source.data <= token.data, "%p <= %p",
+                    locator->source.data, token.data);
+    core_assert_msg(locator->source.data + locator->source.size >=
+                        token.data + token.size,
+                    "%p + %ld >= %p + %ld", locator->source.data,
+                    locator->source.size, token.data, token.size);
 
     TokenPos pos = {};
 

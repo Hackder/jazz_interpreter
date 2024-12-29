@@ -44,6 +44,10 @@ int main(int argc, char* argv[]) {
     Arena arena;
     arena_init(&arena, 16 * 1024);
     defer(arena_free(&arena));
+    defer({
+        std::cerr << "Memory used: " << arena_get_size(&arena) << " bytes"
+                  << std::endl;
+    });
 
     const char* source_file = argv[1];
     String source_code = read_file(&arena, source_file);
@@ -59,6 +63,8 @@ int main(int argc, char* argv[]) {
 
         for (isize i = 0; i < file->errors.size; i++) {
             ParseError error = file->errors[i];
+            std::cerr << error.token.kind << ": " << error.token.source
+                      << std::endl;
             Array<String> parts =
                 parse_error_pretty_print(&error, &locator, &arena);
 

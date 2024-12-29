@@ -14,6 +14,11 @@ Array<String> parse_error_pretty_print(ParseError* error, TokenLocator* locator,
 struct AstFile {
     Tokenizer tokenizer;
     RingBuffer<Token> tokens;
+    // Indicates how many times we have peeked tokens in a row,
+    // without consuming any. This is used to detect infinite loops
+    isize consequent_peeks;
+    // Current depth of the parser, used to prevent stack overflows
+    isize parse_depth;
     Array<ParseError> errors;
     Ast* ast;
 };
@@ -21,6 +26,8 @@ struct AstFile {
 inline void ast_file_init(AstFile* file, Tokenizer tokenizer,
                           isize peek_capacity, Arena* arena) {
     file->tokenizer = tokenizer;
+    file->consequent_peeks = 0;
+    file->parse_depth = 0;
     ring_buffer_init(&file->tokens, peek_capacity, arena);
     array_init(&file->errors, 8, arena);
     file->ast = arena_alloc<Ast>(arena);
