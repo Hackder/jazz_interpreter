@@ -1,7 +1,6 @@
 #include "core.hpp"
 #include "parser.hpp"
 #include <gtest/gtest.h>
-#include <iostream>
 
 AstFile* setup_ast_file(const char* source, Arena* arena) {
     Tokenizer tokenizer;
