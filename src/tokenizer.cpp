@@ -1,6 +1,5 @@
 #include "tokenizer.hpp"
 #include "core.hpp"
-#include <algorithm>
 
 void tokenizer_init(Tokenizer* tokenizer, String source) {
     tokenizer->source = source;

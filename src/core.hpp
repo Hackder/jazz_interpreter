@@ -4,12 +4,14 @@
 
 #pragma once
 #include <algorithm>
+#include <cstdarg>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ostream>
-#include <stdint.h>
+#include <unordered_map>
 
 /// ------------------
 /// Defer
@@ -400,4 +402,93 @@ inline T ring_buffer_pop_front(RingBuffer<T>* ring_buffer) {
     ring_buffer->size -= 1;
 
     return value;
+}
+
+/// ------------------
+/// STL compat allocator
+/// ------------------
+
+template <typename T> struct StlCompatAllocator {
+    using value_type = T;
+
+    Arena* arena;
+
+    StlCompatAllocator(Arena* arena) : arena(arena) {}
+
+    template <typename U>
+    StlCompatAllocator(const StlCompatAllocator<U>& other)
+        : arena(other.arena) {}
+
+    T* allocate(std::size_t n) { return arena_alloc<T>(arena, n); }
+
+    void deallocate(T*, std::size_t) {
+        // No-op for arena allocator
+    }
+
+    template <typename U>
+    bool operator==(const StlCompatAllocator<U>& other) const {
+        return arena == other.arena;
+    }
+
+    template <typename U>
+    bool operator!=(const StlCompatAllocator<U>& other) const {
+        return !(*this == other);
+    }
+};
+
+/// ------------------
+/// Hash map
+/// NOTE(juraj): I am too lazy to do anything better here, so I am just
+/// wrapping the std::unordered_map with a custom allocator
+/// ------------------
+
+template <typename K, typename V> struct HashMap {
+    Arena* arena;
+    std::unordered_map<K, V, std::hash<K>, std::equal_to<K>,
+                       StlCompatAllocator<std::pair<const K, V>>>* backing_map;
+};
+
+template <typename K, typename V>
+inline void hash_map_init(HashMap<K, V>* hash_map, isize default_size,
+                          Arena* arena) {
+    hash_map->arena = arena;
+
+    StlCompatAllocator<K> allocator(arena);
+    hash_map->backing_map =
+        new (arena_alloc<
+             std::unordered_map<K, V, std::hash<K>, std::equal_to<K>,
+                                StlCompatAllocator<std::pair<const K, V>>>>(
+            arena))
+            std::unordered_map<K, V, std::hash<K>, std::equal_to<K>,
+                               StlCompatAllocator<std::pair<const K, V>>>(
+                default_size, std::hash<K>(), std::equal_to<K>(), allocator);
+
+    core_assert(hash_map->backing_map);
+}
+
+template <typename K, typename V>
+inline void hash_map_insert_or_set(HashMap<K, V>* hash_map, K key, V value) {
+    (*hash_map->backing_map)[key] = value;
+}
+
+template <typename K, typename V>
+inline V hash_map_must_get(HashMap<K, V>* hash_map, K key) {
+    auto it = hash_map->backing_map->find(key);
+    core_assert_msg(it != hash_map->backing_map->end(), "Key not found");
+    return it->second;
+}
+
+template <typename K, typename V>
+inline V* hash_map_get_ptr(HashMap<K, V>* hash_map, K key) {
+    auto it = hash_map->backing_map->find(key);
+    if (it == hash_map->backing_map->end()) {
+        return nullptr;
+    }
+
+    return &it->second;
+}
+
+template <typename K, typename V>
+inline void hash_map_remove(HashMap<K, V>* hash_map, K key) {
+    hash_map->backing_map->erase(key);
 }

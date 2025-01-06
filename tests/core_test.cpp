@@ -183,3 +183,29 @@ TEST(Core, RingBufferGrow) {
     EXPECT_EQ(ring_buffer.size, 5);
     EXPECT_EQ(ring_buffer.capacity, 8);
 }
+
+TEST(Core, HashMapAll) {
+    Arena arena;
+    arena_init(&arena, 1024);
+    defer(arena_free(&arena));
+
+    HashMap<i32, i32> map;
+    hash_map_init(&map, 2, &arena);
+
+    hash_map_insert_or_set(&map, 1, 101);
+    hash_map_insert_or_set(&map, 2, 102);
+    hash_map_insert_or_set(&map, 3, 103);
+
+    EXPECT_EQ(hash_map_must_get(&map, 1), 101);
+    EXPECT_EQ(hash_map_must_get(&map, 2), 102);
+    EXPECT_EQ(hash_map_must_get(&map, 3), 103);
+
+    hash_map_insert_or_set(&map, 1, 104);
+    EXPECT_EQ(hash_map_must_get(&map, 1), 104);
+
+    hash_map_remove(&map, 1);
+    EXPECT_EQ(map.backing_map->find(1), map.backing_map->end());
+    EXPECT_EQ(hash_map_get_ptr(&map, 1), nullptr);
+
+    EXPECT_LT(arena_get_size(&arena), 200);
+}
