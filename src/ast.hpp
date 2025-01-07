@@ -1,5 +1,102 @@
+#pragma once
+
 #include "core.hpp"
 #include "tokenizer.hpp"
+
+// ------------------
+// Type system
+// ------------------
+
+enum class TypeKind { Void, Integer, Float, String, Bool, Function };
+
+struct FunctionType;
+struct Type;
+
+struct Type {
+    TypeKind kind;
+
+    static Type* get_int() {
+        static Type type = {TypeKind::Integer};
+        return &type;
+    }
+
+    static Type* get_float() {
+        static Type type = {TypeKind::Float};
+        return &type;
+    }
+
+    static Type* get_string() {
+        static Type type = {TypeKind::String};
+        return &type;
+    }
+
+    static Type* get_bool() {
+        static Type type = {TypeKind::Bool};
+        return &type;
+    }
+
+    static Type* get_void() {
+        static Type type = {TypeKind::Void};
+        return &type;
+    }
+
+    FunctionType* as_function();
+};
+
+bool operator==(Type a, Type b);
+
+struct FunctionType : public Type {
+    Array<Type*> parameters;
+    Type* return_type;
+
+    static FunctionType* make(Array<Type*> parameters, Type* return_type,
+                              Arena* arena) {
+        FunctionType* type = arena_alloc<FunctionType>(arena);
+        type->kind = TypeKind::Function;
+        type->parameters = parameters;
+        type->return_type = return_type;
+        return type;
+    }
+
+    bool operator==(FunctionType other) const {
+        if (parameters.size != other.parameters.size) {
+            return false;
+        }
+
+        for (isize i = 0; i < parameters.size; i++) {
+            if (*parameters[i] != *other.parameters[i]) {
+                return false;
+            }
+        }
+
+        return *return_type == *other.return_type;
+    }
+};
+
+inline FunctionType* Type::as_function() {
+    core_assert(this->kind == TypeKind::Function);
+    return static_cast<FunctionType*>(this);
+}
+
+inline bool operator==(Type a, Type b) {
+    if (a.kind != b.kind) {
+        return false;
+    }
+
+    switch (a.kind) {
+    case TypeKind::Function:
+        return *a.as_function() == *b.as_function();
+    default:
+        return true;
+    }
+
+    core_assert_msg(false, "Unreachable");
+    return false;
+}
+
+// ------------------
+// AST
+// ------------------
 
 enum class AstNodeKind {
     Literal,
@@ -47,6 +144,7 @@ struct AstNodeAssignment;
 
 struct AstNode {
     AstNodeKind kind;
+    Type* type;
 
     AstNodeLiteral* as_literal();
     AstNodeIdentifier* as_identifier();
@@ -81,6 +179,7 @@ struct AstNodeLiteral : public AstNode {
 
 struct AstNodeIdentifier : public AstNode {
     Token token;
+    AstNodeIdentifier* def;
 
     static AstNodeIdentifier* make(Token token, Arena* arena) {
         AstNodeIdentifier* node = arena_alloc<AstNodeIdentifier>(arena);

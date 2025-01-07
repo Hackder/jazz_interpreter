@@ -31,6 +31,8 @@ set(SOURCE_FILES
   ./src/parser.cpp
   ./src/token_pos.hpp
   ./src/token_pos.cpp
+  ./src/sema.hpp
+  ./src/sema.cpp
 )
 
 add_executable(
@@ -43,10 +45,12 @@ target_compile_options(jazz PRIVATE)
 add_executable(
   jazz_test
   ${SOURCE_FILES}
+  ./tests/common.hpp
   ./tests/core_test.cpp
   ./tests/tokenizer_test.cpp
   ./tests/parser_test.cpp
   ./tests/token_pos_test.cpp
+  ./tests/sema_test.cpp
 )
 target_compile_options(jazz_test PRIVATE)
 

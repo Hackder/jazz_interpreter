@@ -629,12 +629,23 @@ AstNode* parse_statement(AstFile* file, Arena* arena) {
     switch (tok.kind) {
     case TokenKind::Break: {
         next_token(file);
-        AstNode* value = parse_expression(file, false, arena);
+        AstNode* value = nullptr;
+        if (peek_token(file).kind != TokenKind::Newline) {
+            value = parse_expression(file, false, arena);
+        }
         return AstNodeBreak::make(value, tok, arena);
     }
     case TokenKind::Continue: {
         next_token(file);
         return AstNodeContinue::make(tok, arena);
+    }
+    case TokenKind::Return: {
+        next_token(file);
+        AstNode* value = nullptr;
+        if (peek_token(file).kind != TokenKind::Newline) {
+            value = parse_expression(file, false, arena);
+        }
+        return AstNodeReturn::make(value, tok, arena);
     }
     case TokenKind::LBrace: {
         return parse_block(file, arena);
@@ -694,7 +705,7 @@ void ast_file_parse(AstFile* file, Arena* arena) {
         if (declaration == nullptr) {
             skip_to_next_line(file);
         }
-        array_push(&file->ast->declarations, declaration);
+        array_push(&file->ast.declarations, declaration);
         skip_newlines(file);
         tok = peek_token(file);
     }

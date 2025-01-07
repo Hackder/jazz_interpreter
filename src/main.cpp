@@ -76,8 +76,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    for (isize i = 0; i < file->ast->declarations.size; i++) {
-        AstNode* node = file->ast->declarations[i];
+    for (isize i = 0; i < file->ast.declarations.size; i++) {
+        AstNode* node = file->ast.declarations[i];
         std::cout << ast_serialize_debug(node, &arena) << std::endl
                   << std::endl;
     }

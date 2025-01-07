@@ -319,6 +319,11 @@ TokenizerResult tokenizer_next_token(Tokenizer* tokenizer) {
                 break;
             }
 
+            if (result.token.source == "return") {
+                result.token.kind = TokenKind::Return;
+                break;
+            }
+
             break;
         }
 
@@ -452,6 +457,9 @@ std::ostream& operator<<(std::ostream& os, TokenKind kind) {
         break;
     case TokenKind::Bool:
         os << "Bool";
+        break;
+    case TokenKind::Return:
+        os << "Return";
         break;
     }
     return os;

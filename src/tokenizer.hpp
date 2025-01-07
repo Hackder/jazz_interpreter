@@ -16,6 +16,7 @@ enum class TokenKind {
     For,
     Break,
     Continue,
+    Return,
 
     // Literals
     Integer, // 1, 2, 3, ...

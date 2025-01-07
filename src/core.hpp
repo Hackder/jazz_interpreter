@@ -240,6 +240,17 @@ inline String string_substr(String str, isize start, isize count) {
     return String{str.data + start, count};
 }
 
+template <> struct std::hash<String> {
+    std::size_t operator()(String str) const {
+        std::size_t hash = 0;
+        for (isize i = 0; i < str.size; i++) {
+            hash = 31 * hash + str.data[i];
+        }
+
+        return hash;
+    }
+};
+
 /// ------------------
 /// Array
 /// ------------------

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "ast.hpp"
 #include "core.hpp"
 #include "token_pos.hpp"
@@ -20,7 +22,7 @@ struct AstFile {
     // Current depth of the parser, used to prevent stack overflows
     isize parse_depth;
     Array<ParseError> errors;
-    Ast* ast;
+    Ast ast;
 };
 
 inline void ast_file_init(AstFile* file, Tokenizer tokenizer,
@@ -30,8 +32,7 @@ inline void ast_file_init(AstFile* file, Tokenizer tokenizer,
     file->parse_depth = 0;
     ring_buffer_init(&file->tokens, peek_capacity, arena);
     array_init(&file->errors, 8, arena);
-    file->ast = arena_alloc<Ast>(arena);
-    ast_init(file->ast, arena);
+    ast_init(&file->ast, arena);
 }
 
 inline AstFile* ast_file_make(Tokenizer tokenizer, isize peek_capacity,

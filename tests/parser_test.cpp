@@ -1,15 +1,7 @@
+#include "common.hpp"
 #include "core.hpp"
 #include "parser.hpp"
 #include <gtest/gtest.h>
-
-AstFile* setup_ast_file(const char* source, Arena* arena) {
-    Tokenizer tokenizer;
-    tokenizer_init(&tokenizer, string_from_cstr(source));
-
-    AstFile* file = ast_file_make(tokenizer, 16, arena);
-
-    return file;
-}
 
 TEST(Parser, ExprNumbersOnly) {
     Arena arena;
@@ -448,6 +440,25 @@ TEST(Parser, AssignmentInvalid) {
     ParseError error = file->errors[0];
     EXPECT_EQ(error.token.kind, TokenKind::Colon);
     EXPECT_STREQ(error.message.data, "Invalid declaration");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, ReturnWithValue) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        sum :: fn(a: int, b: int) -> int {
+            return a + b
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    AstNode* node = parse_statement(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data,
+                 "Decl(sum :: Func(fn -> Ident(int), Param(a) Param(b) "
+                 "Block(Return(Bin(Ident(a) + Ident(b))))))");
     EXPECT_TRUE(ast_file_exhausted(file));
 }
 
