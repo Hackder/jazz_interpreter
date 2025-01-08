@@ -51,6 +51,7 @@ void sema_context_pop_context(SemaContext* context) {
 }
 
 void analyse_type(AstNode* node, Arena* arena) {
+    core_assert(node);
     core_assert_msg(node->kind == AstNodeKind::Identifier, "Not implemented");
     AstNodeIdentifier* id = node->as_identifier();
 
@@ -84,8 +85,9 @@ void analyse_top_level_declarations(AstFile* file, SemaContext* context,
             analyse_type(node->type, arena);
             node->name->type_set = node->type->type_set;
         } else {
-            node->name->type_set = type_set_make(1, arena);
+            node->name->type_set = type_set_make(0, arena);
         }
+        node->type_set = type_set_make_with(Type::get_void(), arena);
 
         sema_context_define_value(context, node->name);
     }
@@ -109,7 +111,7 @@ void analyse_block(AstFile* file, SemaContext* context, AstNode* node,
         AstNode* last = block->statements[block->statements.size - 1];
         block->type_set = last->type_set;
     } else {
-        block->type_set = type_set_make(1, arena);
+        block->type_set = type_set_make(0, arena);
     }
 
     sema_context_pop_context(context);
@@ -155,8 +157,8 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
         switch (bin->op) {
         case TokenKind::Plus: {
-            static Slice<TypeKind> valid_types = {
-                TypeKind::Integer, TypeKind::Float, TypeKind::String};
+            TypeKind valid_types[] = {TypeKind::Integer, TypeKind::Float,
+                                      TypeKind::String};
 
             {
                 bool result = type_set_intersect_if_result_kinds(
@@ -173,7 +175,6 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            type_set_entangle(bin->left->type_set, bin->right->type_set);
             node->type_set = bin->left->type_set;
             break;
         }
@@ -185,8 +186,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         case TokenKind::LessEqual:
         case TokenKind::GreaterThan:
         case TokenKind::GreaterEqual: {
-            static Slice<TypeKind> valid_types = {TypeKind::Integer,
-                                                  TypeKind::Float};
+            TypeKind valid_types[] = {TypeKind::Integer, TypeKind::Float};
 
             {
                 bool result = type_set_intersect_if_result_kinds(
@@ -203,7 +203,6 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            type_set_entangle(bin->left->type_set, bin->right->type_set);
             node->type_set = bin->left->type_set;
             break;
         }
@@ -213,13 +212,12 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            type_set_entangle(bin->left->type_set, bin->right->type_set);
             node->type_set = bin->left->type_set;
             break;
         }
         case TokenKind::BinaryAnd:
         case TokenKind::BinaryOr: {
-            static Slice<TypeKind> valid_types = {TypeKind::Integer};
+            TypeKind valid_types[] = {TypeKind::Integer};
 
             {
                 bool result = type_set_intersect_if_result_kinds(
@@ -236,13 +234,12 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            type_set_entangle(bin->left->type_set, bin->right->type_set);
             node->type_set = bin->left->type_set;
             break;
         }
         case TokenKind::LogicalAnd:
         case TokenKind::LogicalOr: {
-            static Slice<TypeKind> valid_types = {TypeKind::Bool};
+            TypeKind valid_types[] = {TypeKind::Bool};
 
             {
                 bool result = type_set_intersect_if_result_kinds(
@@ -259,7 +256,6 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            type_set_entangle(bin->left->type_set, bin->right->type_set);
             node->type_set = bin->left->type_set;
             break;
         }
@@ -286,8 +282,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         switch (unary->op) {
         case TokenKind::Plus:
         case TokenKind::Minus: {
-            static Slice<TypeKind> valid_types = {TypeKind::Integer,
-                                                  TypeKind::Float};
+            TypeKind valid_types[] = {TypeKind::Integer, TypeKind::Float};
 
             bool result = type_set_intersect_if_result_kinds(
                 unary->operand->type_set, valid_types);
@@ -297,7 +292,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             break;
         }
         case TokenKind::Bang: {
-            static Slice<TypeKind> valid_types = {TypeKind::Bool};
+            TypeKind valid_types[] = {TypeKind::Bool};
 
             bool result = type_set_intersect_if_result_kinds(
                 unary->operand->type_set, valid_types);
@@ -318,16 +313,23 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             analyse_expression(file, context, call->arguments[i], arena);
         }
 
-        // core_assert(call->callee->type->kind == TypeKind::Function);
-        // FunctionType* callee_type = call->callee->type->as_function();
-        // core_assert(call->arguments.size == callee_type->parameters.size);
-        //
-        // for (isize i = 0; i < call->arguments.size; i++) {
-        //     core_assert(call->arguments[i]->type ==
-        //     callee_type->parameters[i]);
-        // }
-        //
-        // node->type = callee_type->return_type;
+        Array<TypeSetHandle*> parameters;
+        array_init(&parameters, call->arguments.size, arena);
+        for (isize i = 0; i < call->arguments.size; i++) {
+            array_push(&parameters, call->arguments[i]->type_set);
+        }
+
+        TypeSetHandle* return_type = type_set_make(0, arena);
+        FunctionType* callee_type =
+            FunctionType::make(parameters, return_type, arena);
+        TypeSetHandle* callee_type_set = type_set_make_with(callee_type, arena);
+
+        bool result = type_set_intersect_if_result(call->callee->type_set,
+                                                   callee_type_set);
+        core_assert(result);
+
+        call->type_set = return_type;
+
         break;
     }
     case AstNodeKind::If: {
@@ -340,7 +342,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         analyse_block(file, context, if_node->else_branch, arena);
 
         {
-            static Slice<TypeKind> valid_condition_result = {TypeKind::Bool};
+            TypeKind valid_condition_result[] = {TypeKind::Bool};
             bool result = type_set_intersect_if_result_kinds(
                 if_node->condition->type_set, valid_condition_result);
             core_assert(result);
@@ -350,8 +352,6 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             if_node->then_branch->type_set, if_node->else_branch->type_set);
         core_assert(result);
 
-        type_set_entangle(if_node->then_branch->type_set,
-                          if_node->else_branch->type_set);
         node->type_set = if_node->then_branch->type_set;
         break;
     }
@@ -410,6 +410,34 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             sema_context_define_value(context, func->parameters[i]->name);
         }
 
+        Array<TypeSetHandle*> parameters;
+        array_init(&parameters, func->parameters.size, arena);
+
+        for (isize i = 0; i < func->parameters.size; i++) {
+            TypeSetHandle* param_type_set = nullptr;
+            if (func->parameters[i]->type) {
+                analyse_type(func->parameters[i]->type, arena);
+                param_type_set = func->parameters[i]->type->type_set;
+            } else {
+                param_type_set = type_set_make(0, arena);
+            }
+            func->parameters[i]->name->type_set = param_type_set;
+            func->parameters[i]->type_set = param_type_set;
+            array_push(&parameters, param_type_set);
+        }
+
+        TypeSetHandle* return_type = nullptr;
+        if (func->return_type) {
+            analyse_type(func->return_type, arena);
+            return_type = func->return_type->type_set;
+        } else {
+            return_type = type_set_make(0, arena);
+        }
+
+        FunctionType* func_type =
+            FunctionType::make(parameters, return_type, arena);
+        func->type_set = type_set_make_with(func_type, arena);
+
         analyse_block(file, context, func->body, arena);
         sema_context_pop_context(context);
         break;
@@ -464,13 +492,12 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
             analyse_type(decl->type, arena);
             decl->name->type_set = decl->type->type_set;
         } else {
-            decl->name->type_set = type_set_make(1, arena);
+            decl->name->type_set = type_set_make(0, arena);
         }
 
         bool result = type_set_intersect_if_result(decl->name->type_set,
                                                    decl->value->type_set);
         core_assert(result);
-        type_set_entangle(decl->name->type_set, decl->value->type_set);
         node->type_set = decl->name->type_set;
         return;
     }
@@ -482,7 +509,6 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         bool result = type_set_intersect_if_result(assign->name->type_set,
                                                    assign->value->type_set);
         core_assert(result);
-        type_set_entangle(assign->name->type_set, assign->value->type_set);
         node->type_set = assign->name->type_set;
         return;
     }
@@ -574,5 +600,13 @@ void semantic_analysis(AstFile* file, Arena* arena) {
     for (isize i = 0; i < file->ast.declarations.size; i++) {
         AstNodeDeclaration* node = file->ast.declarations[i]->as_declaration();
         analyse_expression(file, &context, node->value, arena);
+        bool result = type_set_intersect_if_result(node->name->type_set,
+                                                   node->value->type_set);
+        if (node->value->type_set->set->types.size > 0) {
+            FunctionType* func_type =
+                node->value->type_set->set->types[0]->as_function();
+            core_assert(func_type);
+        }
+        core_assert(result);
     }
 }

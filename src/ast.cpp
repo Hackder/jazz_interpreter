@@ -194,12 +194,18 @@ void ast_serialize_debug_rec(AstNode* node, std::ostream& stream) {
         stream << "Decl(";
         stream << node->as_declaration()->name->token.source;
 
+        stream << " :";
+        if (node->as_declaration()->type) {
+            ast_serialize_debug_rec(node->as_declaration()->type, stream);
+            stream << " ";
+        }
+
         switch (node->as_declaration()->decl_kind) {
         case AstDeclarationKind::Constant:
-            stream << " :: ";
+            stream << ": ";
             break;
         case AstDeclarationKind::Variable:
-            stream << " := ";
+            stream << "= ";
             break;
         }
 

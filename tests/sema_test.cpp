@@ -69,6 +69,50 @@ TEST(Sema, SimpleTypecheck) {
     semantic_analysis(file, &arena);
 }
 
+TEST(Sema, SimpleTypecheckFunctions) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    const char* source = R"SOURCE(
+        asdf :: fn(a, b) -> int {
+            return a + b
+        }
+
+        sum :: fn(a, b, c) -> int {
+            return a + asdf(b, c)
+        }
+
+        main :: fn() {
+            a := "asdf"
+            c := sum(1, 1, "b")
+        }
+    )SOURCE";
+    AstFile* file = setup_ast_file(source, &arena);
+
+    ast_file_parse(file, &arena);
+    EXPECT_EQ(file->errors.size, 0);
+
+    if (file->errors.size > 0) {
+        TokenLocator locator;
+        token_locator_init(&locator, string_from_cstr(source), &arena);
+
+        for (isize i = 0; i < file->errors.size; i++) {
+            ParseError error = file->errors[i];
+            // std::cerr << error.token.kind << ": " << error.token.source
+            //           << std::endl;
+            Array<String> parts =
+                parse_error_pretty_print(&error, &locator, &arena);
+
+            for (isize j = 0; j < parts.size; j++) {
+                std::cout << parts[j];
+            }
+            std::cout << std::endl;
+        }
+    }
+
+    semantic_analysis(file, &arena);
+}
+
 // TEST(Sema, Complex) {
 //     Arena arena;
 //     arena_init(&arena, 2048);

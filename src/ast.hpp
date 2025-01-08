@@ -11,6 +11,8 @@ enum class TypeKind { Void, Integer, Float, String, Bool, Function };
 
 struct FunctionType;
 struct Type;
+struct TypeSet;
+struct TypeSetHandle;
 
 struct Type {
     TypeKind kind;
@@ -40,36 +42,38 @@ struct Type {
         return &type;
     }
 
+    static Type* get_by_kind(TypeKind kind) {
+        switch (kind) {
+        case TypeKind::Void:
+            return get_void();
+        case TypeKind::Integer:
+            return get_int();
+        case TypeKind::Float:
+            return get_float();
+        case TypeKind::String:
+            return get_string();
+        case TypeKind::Bool:
+            return get_bool();
+        default:
+            core_assert_msg(false, "Unsupported type kind");
+            return nullptr;
+        }
+    }
+
     FunctionType* as_function();
 };
 
-bool operator==(Type a, Type b);
-
 struct FunctionType : public Type {
-    Array<Type*> parameters;
-    Type* return_type;
+    Array<TypeSetHandle*> parameters;
+    TypeSetHandle* return_type;
 
-    static FunctionType* make(Array<Type*> parameters, Type* return_type,
-                              Arena* arena) {
+    static FunctionType* make(Array<TypeSetHandle*> parameters,
+                              TypeSetHandle* return_type, Arena* arena) {
         FunctionType* type = arena_alloc<FunctionType>(arena);
         type->kind = TypeKind::Function;
         type->parameters = parameters;
         type->return_type = return_type;
         return type;
-    }
-
-    bool operator==(FunctionType other) const {
-        if (parameters.size != other.parameters.size) {
-            return false;
-        }
-
-        for (isize i = 0; i < parameters.size; i++) {
-            if (*parameters[i] != *other.parameters[i]) {
-                return false;
-            }
-        }
-
-        return *return_type == *other.return_type;
     }
 };
 
@@ -78,21 +82,7 @@ inline FunctionType* Type::as_function() {
     return static_cast<FunctionType*>(this);
 }
 
-inline bool operator==(Type a, Type b) {
-    if (a.kind != b.kind) {
-        return false;
-    }
-
-    switch (a.kind) {
-    case TypeKind::Function:
-        return *a.as_function() == *b.as_function();
-    default:
-        return true;
-    }
-
-    core_assert_msg(false, "Unreachable");
-    return false;
-}
+inline bool function_type_intersect_with(FunctionType* a, FunctionType* b);
 
 struct TypeSet {
     Arena* arena;
@@ -121,27 +111,10 @@ inline TypeSetHandle* type_set_make(isize capacity, Arena* arena) {
 }
 
 inline TypeSetHandle* type_set_make_with(Type* type, Arena* arena) {
-    TypeSetHandle* handle = type_set_make(1, arena);
+    TypeSetHandle* handle = type_set_make(0, arena);
     array_push(&handle->set->types, type);
     handle->set->is_full = false;
     return handle;
-}
-
-inline bool type_set_has(TypeSetHandle* handle, Type* type) {
-    core_assert(handle);
-    core_assert(type);
-
-    if (handle->set->is_full) {
-        return true;
-    }
-
-    for (isize i = 0; i < handle->set->types.size; i++) {
-        if (*handle->set->types[i] == *type) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 // Performs an intersection between the two sets, modifying the first set.
@@ -156,14 +129,12 @@ inline bool type_set_intersect_if_result(TypeSetHandle* handle,
     core_assert(other);
 
     if (other->set->is_full) {
+        other->set = handle->set;
         return true;
     }
 
     if (handle->set->is_full) {
-        handle->set->types = other->set->types;
-        array_clone_to(&other->set->types, &handle->set->types,
-                       handle->set->arena);
-        handle->set->is_full = false;
+        handle->set = other->set;
         return true;
     }
 
@@ -171,11 +142,31 @@ inline bool type_set_intersect_if_result(TypeSetHandle* handle,
 
     for (isize i = 0; i < handle->set->types.size; i++) {
         Type* type = handle->set->types[i];
-        bool found = type_set_has(other, type);
 
+        bool found = false;
+        isize j = 0;
+        for (; j < other->set->types.size; j++) {
+            if (type->kind == other->set->types[j]->kind) {
+                found = true;
+                break;
+            }
+        }
         if (!found) {
             array_remove_at_unstable(&handle->set->types, i);
             i--;
+            continue;
+        }
+
+        if (type->kind == TypeKind::Function) {
+            FunctionType* ftype = type->as_function();
+            FunctionType* other_ftype = other->set->types[j]->as_function();
+
+            bool result = function_type_intersect_with(ftype, other_ftype);
+            if (!result) {
+                array_remove_at_unstable(&handle->set->types, i);
+                i--;
+                continue;
+            }
         }
     }
 
@@ -187,14 +178,35 @@ inline bool type_set_intersect_if_result(TypeSetHandle* handle,
         return false;
     }
 
+    other->set = handle->set;
     return true;
 }
 
+inline bool function_type_intersect_with(FunctionType* a, FunctionType* b) {
+    if (a->parameters.size != b->parameters.size) {
+        return false;
+    }
+
+    for (isize i = 0; i < a->parameters.size; i++) {
+        if (!type_set_intersect_if_result(a->parameters[i], b->parameters[i])) {
+            return false;
+        }
+    }
+
+    return type_set_intersect_if_result(a->return_type, b->return_type);
+}
+
+template <isize N>
 inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,
-                                               Slice<TypeKind> kinds) {
+                                               const TypeKind (&kinds)[N]) {
     core_assert(handle);
 
     if (handle->set->is_full) {
+        handle->set->is_full = false;
+        array_init(&handle->set->types, N, handle->set->arena);
+        for (isize i = 0; i < N; i++) {
+            array_push(&handle->set->types, Type::get_by_kind(kinds[i]));
+        }
         return true;
     }
 
@@ -204,7 +216,7 @@ inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,
         Type* type = handle->set->types[i];
         bool found = false;
 
-        for (isize j = 0; j < kinds.size; j++) {
+        for (isize j = 0; j < N; j++) {
             if (type->kind == kinds[j]) {
                 found = true;
                 break;
@@ -226,26 +238,6 @@ inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,
     }
 
     return true;
-}
-
-inline void type_set_entangle(TypeSetHandle* handle, TypeSetHandle* other) {
-    core_assert(handle);
-    core_assert(other);
-    core_assert(handle->set);
-    core_assert(other->set);
-    core_assert(handle->set->arena == other->set->arena);
-    core_assert(handle->set->is_full == handle->set->is_full);
-    if (handle->set->is_full) {
-        handle->set = other->set;
-        return;
-    }
-
-    core_assert(handle->set->types.size == other->set->types.size);
-    for (isize i = 0; i < handle->set->types.size; i++) {
-        core_assert(*handle->set->types[i] == *other->set->types[i]);
-    }
-
-    handle->set = other->set;
 }
 
 // ------------------

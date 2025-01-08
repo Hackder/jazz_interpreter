@@ -276,16 +276,19 @@ template <typename T> struct Array {
 
 template <typename T>
 inline void array_init(Array<T>* array, isize initial_capacity, Arena* arena) {
-    core_assert_msg(initial_capacity > 0, "%ld <= 0", initial_capacity);
+    core_assert_msg(initial_capacity >= 0, "%ld < 0", initial_capacity);
     array->arena = arena;
-    array->data = arena_alloc<T>(arena, initial_capacity);
-    array->size = 0;
     array->capacity = initial_capacity;
+    if (array->capacity > 0) {
+        array->data = arena_alloc<T>(arena, initial_capacity);
+    } else {
+        array->data = nullptr;
+    }
+    array->size = 0;
 }
 
 template <typename T>
 inline Array<T>* array_make(isize initial_capacity, Arena* arena) {
-    core_assert_msg(initial_capacity > 0, "%ld <= 0", initial_capacity);
     Array<T>* array = arena_alloc<Array<T>>(arena);
     array_init(array, initial_capacity, arena);
 
@@ -295,9 +298,12 @@ inline Array<T>* array_make(isize initial_capacity, Arena* arena) {
 template <typename T> inline void array_push(Array<T>* array, T value) {
     core_assert_msg(array->size <= array->capacity, "%ld > %ld", array->size,
                     array->capacity);
-    core_assert_msg(array->data, "array->data is null");
     core_assert_msg(array->arena, "array->arena is null");
-    core_assert_msg(array->capacity > 0, "%ld <= 0", array->capacity);
+    core_assert_msg(array->capacity >= 0, "%ld < 0", array->capacity);
+
+    if (array->data == nullptr || array->capacity == 0) {
+        array_init(array, 4, array->arena);
+    }
 
     if (array->size == array->capacity) {
         isize new_capacity = array->capacity * 2;
@@ -336,45 +342,6 @@ inline void array_clone_to(Array<T>* source, Array<T>* dest, Arena* arena) {
         }
         dest->size = source->size;
     }
-}
-
-/// ------------------
-/// Slice
-/// ------------------
-
-template <typename T> struct Slice {
-    T* data;
-    isize size;
-
-    Slice(std::initializer_list<T> list) {
-        data = (T*)list.begin();
-        size = list.size();
-    }
-
-    T& operator[](isize index) {
-        core_assert(index >= 0);
-        core_assert(index < this->size);
-        return data[index];
-    }
-
-    const T& operator[](isize index) const {
-        core_assert(index >= 0);
-        core_assert(index < this->size);
-        return data[index];
-    }
-};
-
-template <typename T> inline Slice<T> slice_from_array(Array<T>* array) {
-    return Slice<T>{array->data, array->size};
-}
-
-template <typename T>
-inline Slice<T> slice_from_array(Array<T>* array, isize start, isize count) {
-    core_assert_msg(start >= 0, "%ld < 0", start);
-    core_assert_msg(start + count <= array->size, "%ld + %ld > %ld", start,
-                    count, array->size);
-
-    return Slice<T>{array->data + start, count};
 }
 
 /// ------------------
