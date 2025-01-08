@@ -79,6 +79,30 @@ TEST(Parser, DeclSimpleVariable) {
     EXPECT_TRUE(ast_file_exhausted(file));
 }
 
+TEST(Parser, DeclVariableWithExplicitType) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    AstFile* file = setup_ast_file("a:int = 1", &arena);
+
+    AstNode* node = parse_declaration(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Decl(a :Ident(int) = Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
+TEST(Parser, DeclConstantWithExplicitType) {
+    Arena arena;
+    arena_init(&arena, 2048);
+    defer(arena_free(&arena));
+    AstFile* file = setup_ast_file("a:int : 1", &arena);
+
+    AstNode* node = parse_declaration(file, &arena);
+    String ast = ast_serialize_debug(node, &arena);
+    EXPECT_STREQ(ast.data, "Decl(a :Ident(int) : Lit(1))");
+    EXPECT_TRUE(ast_file_exhausted(file));
+}
+
 TEST(Parser, DeclSimpleConstant) {
     Arena arena;
     arena_init(&arena, 2048);

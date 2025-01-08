@@ -565,11 +565,11 @@ AstNode* parse_declaration(AstFile* file, Arena* arena) {
                     "signifies that it is a declaration");
 
     AstNode* type = nullptr;
-    tok = next_token(file);
+    tok = peek_token(file);
     if (tok.kind != TokenKind::Assign && tok.kind != TokenKind::Colon) {
         type = parse_type(file, arena);
-        tok = next_token(file);
     }
+    tok = next_token(file);
 
     if (tok.kind == TokenKind::Colon) {
         AstNode* value = parse_expression(file, false, arena);
