@@ -311,6 +311,72 @@ template <typename T> inline void array_push(Array<T>* array, T value) {
     array->size += 1;
 }
 
+template <typename T>
+inline T array_remove_at_unstable(Array<T>* array, isize index) {
+    core_assert_msg(index >= 0, "%ld < 0", index);
+    core_assert_msg(index < array->size, "%ld >= %ld", index, array->size);
+
+    T value = array->data[index];
+    array->data[index] = array->data[array->size - 1];
+    array->size -= 1;
+
+    return value;
+}
+
+template <typename T>
+inline void array_clone_to(Array<T>* source, Array<T>* dest, Arena* arena) {
+    if (dest->capacity < source->size) {
+        array_init(dest, source->capacity, arena);
+        for (isize i = 0; i < source->size; i++) {
+            array_push(dest, source->data[i]);
+        }
+    } else {
+        for (isize i = 0; i < source->size; i++) {
+            dest->data[i] = source->data[i];
+        }
+        dest->size = source->size;
+    }
+}
+
+/// ------------------
+/// Slice
+/// ------------------
+
+template <typename T> struct Slice {
+    T* data;
+    isize size;
+
+    Slice(std::initializer_list<T> list) {
+        data = (T*)list.begin();
+        size = list.size();
+    }
+
+    T& operator[](isize index) {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+
+    const T& operator[](isize index) const {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+};
+
+template <typename T> inline Slice<T> slice_from_array(Array<T>* array) {
+    return Slice<T>{array->data, array->size};
+}
+
+template <typename T>
+inline Slice<T> slice_from_array(Array<T>* array, isize start, isize count) {
+    core_assert_msg(start >= 0, "%ld < 0", start);
+    core_assert_msg(start + count <= array->size, "%ld + %ld > %ld", start,
+                    count, array->size);
+
+    return Slice<T>{array->data + start, count};
+}
+
 /// ------------------
 /// Ring buffer
 /// ------------------

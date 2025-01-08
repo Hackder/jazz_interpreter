@@ -63,8 +63,8 @@ int main(int argc, char* argv[]) {
 
         for (isize i = 0; i < file->errors.size; i++) {
             ParseError error = file->errors[i];
-            std::cerr << error.token.kind << ": " << error.token.source
-                      << std::endl;
+            // std::cerr << error.token.kind << ": " << error.token.source
+            //           << std::endl;
             Array<String> parts =
                 parse_error_pretty_print(&error, &locator, &arena);
 

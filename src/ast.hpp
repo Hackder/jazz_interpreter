@@ -94,6 +94,160 @@ inline bool operator==(Type a, Type b) {
     return false;
 }
 
+struct TypeSet {
+    Arena* arena;
+    Array<Type*> types;
+    bool is_full;
+};
+
+struct TypeSetHandle {
+    TypeSet* set;
+};
+
+inline void type_set_init(TypeSet* set, isize capacity, Arena* arena) {
+    core_assert(set);
+
+    set->arena = arena;
+    array_init(&set->types, capacity, arena);
+    set->is_full = true;
+}
+
+inline TypeSetHandle* type_set_make(isize capacity, Arena* arena) {
+    TypeSet* set = arena_alloc<TypeSet>(arena);
+    type_set_init(set, capacity, arena);
+    TypeSetHandle* handle = arena_alloc<TypeSetHandle>(arena);
+    handle->set = set;
+    return handle;
+}
+
+inline TypeSetHandle* type_set_make_with(Type* type, Arena* arena) {
+    TypeSetHandle* handle = type_set_make(1, arena);
+    array_push(&handle->set->types, type);
+    handle->set->is_full = false;
+    return handle;
+}
+
+inline bool type_set_has(TypeSetHandle* handle, Type* type) {
+    core_assert(handle);
+    core_assert(type);
+
+    if (handle->set->is_full) {
+        return true;
+    }
+
+    for (isize i = 0; i < handle->set->types.size; i++) {
+        if (*handle->set->types[i] == *type) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+// Performs an intersection between the two sets, modifying the first set.
+// If the resulting set would be empty, the function returns false. and
+// the original set is restored.
+// If the resulting set has some elements, the function returns true and leaves
+// the set modified.
+// The second set is never modified.
+inline bool type_set_intersect_if_result(TypeSetHandle* handle,
+                                         TypeSetHandle* other) {
+    core_assert(handle);
+    core_assert(other);
+
+    if (other->set->is_full) {
+        return true;
+    }
+
+    if (handle->set->is_full) {
+        handle->set->types = other->set->types;
+        array_clone_to(&other->set->types, &handle->set->types,
+                       handle->set->arena);
+        handle->set->is_full = false;
+        return true;
+    }
+
+    isize original_size = handle->set->types.size;
+
+    for (isize i = 0; i < handle->set->types.size; i++) {
+        Type* type = handle->set->types[i];
+        bool found = type_set_has(other, type);
+
+        if (!found) {
+            array_remove_at_unstable(&handle->set->types, i);
+            i--;
+        }
+    }
+
+    if (handle->set->types.size == 0) {
+        // HACK(juraj): to allow us to report errors in a reasonable way,
+        // we need to know the original sets. This is a hack to allow us to
+        // restore the original set.
+        handle->set->types.size = original_size;
+        return false;
+    }
+
+    return true;
+}
+
+inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,
+                                               Slice<TypeKind> kinds) {
+    core_assert(handle);
+
+    if (handle->set->is_full) {
+        return true;
+    }
+
+    isize original_size = handle->set->types.size;
+
+    for (isize i = 0; i < handle->set->types.size; i++) {
+        Type* type = handle->set->types[i];
+        bool found = false;
+
+        for (isize j = 0; j < kinds.size; j++) {
+            if (type->kind == kinds[j]) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            array_remove_at_unstable(&handle->set->types, i);
+            i--;
+        }
+    }
+
+    if (handle->set->types.size == 0) {
+        // HACK(juraj): to allow us to report errors in a reasonable way,
+        // we need to know the original sets. This is a hack to allow us to
+        // restore the original set.
+        handle->set->types.size = original_size;
+        return false;
+    }
+
+    return true;
+}
+
+inline void type_set_entangle(TypeSetHandle* handle, TypeSetHandle* other) {
+    core_assert(handle);
+    core_assert(other);
+    core_assert(handle->set);
+    core_assert(other->set);
+    core_assert(handle->set->arena == other->set->arena);
+    core_assert(handle->set->is_full == handle->set->is_full);
+    if (handle->set->is_full) {
+        handle->set = other->set;
+        return;
+    }
+
+    core_assert(handle->set->types.size == other->set->types.size);
+    for (isize i = 0; i < handle->set->types.size; i++) {
+        core_assert(*handle->set->types[i] == *other->set->types[i]);
+    }
+
+    handle->set = other->set;
+}
+
 // ------------------
 // AST
 // ------------------
@@ -144,7 +298,7 @@ struct AstNodeAssignment;
 
 struct AstNode {
     AstNodeKind kind;
-    Type* type;
+    TypeSetHandle* type_set;
 
     AstNodeLiteral* as_literal();
     AstNodeIdentifier* as_identifier();
