@@ -9,6 +9,7 @@
 
 enum class TypeKind { Void, Integer, Float, String, Bool, Function };
 
+struct AstNode;
 struct FunctionType;
 struct Type;
 struct TypeSet;
@@ -63,6 +64,17 @@ struct Type {
     FunctionType* as_function();
 };
 
+struct TypeSet {
+    Arena* arena;
+    Array<Type*> types;
+    bool is_full;
+};
+
+struct TypeSetHandle {
+    TypeSet* set;
+    Array<TypeSetHandle**> backreferences;
+};
+
 struct FunctionType : public Type {
     Array<TypeSetHandle*> parameters;
     TypeSetHandle* return_type;
@@ -72,7 +84,11 @@ struct FunctionType : public Type {
         FunctionType* type = arena_alloc<FunctionType>(arena);
         type->kind = TypeKind::Function;
         type->parameters = parameters;
+        for (isize i = 0; i < parameters.size; i++) {
+            array_push(&parameters[i]->backreferences, &type->parameters[i]);
+        }
         type->return_type = return_type;
+        array_push(&return_type->backreferences, &type->return_type);
         return type;
     }
 };
@@ -83,16 +99,6 @@ inline FunctionType* Type::as_function() {
 }
 
 inline bool function_type_intersect_with(FunctionType* a, FunctionType* b);
-
-struct TypeSet {
-    Arena* arena;
-    Array<Type*> types;
-    bool is_full;
-};
-
-struct TypeSetHandle {
-    TypeSet* set;
-};
 
 inline void type_set_init(TypeSet* set, isize capacity, Arena* arena) {
     core_assert(set);
@@ -107,6 +113,7 @@ inline TypeSetHandle* type_set_make(isize capacity, Arena* arena) {
     type_set_init(set, capacity, arena);
     TypeSetHandle* handle = arena_alloc<TypeSetHandle>(arena);
     handle->set = set;
+    array_init(&handle->backreferences, 1, arena);
     return handle;
 }
 
@@ -117,84 +124,13 @@ inline TypeSetHandle* type_set_make_with(Type* type, Arena* arena) {
     return handle;
 }
 
-// Performs an intersection between the two sets, modifying the first set.
-// If the resulting set would be empty, the function returns false. and
-// the original set is restored.
-// If the resulting set has some elements, the function returns true and leaves
-// the set modified.
-// The second set is never modified.
-inline bool type_set_intersect_if_result(TypeSetHandle* handle,
-                                         TypeSetHandle* other) {
-    core_assert(handle);
-    core_assert(other);
+FunctionType* type_set_get_function(TypeSetHandle* handle);
 
-    if (other->set->is_full) {
-        other->set = handle->set;
-        return true;
-    }
+void type_set_reassign_all(TypeSetHandle* handle, TypeSetHandle* other);
 
-    if (handle->set->is_full) {
-        handle->set = other->set;
-        return true;
-    }
+bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other);
 
-    isize original_size = handle->set->types.size;
-
-    for (isize i = 0; i < handle->set->types.size; i++) {
-        Type* type = handle->set->types[i];
-
-        bool found = false;
-        isize j = 0;
-        for (; j < other->set->types.size; j++) {
-            if (type->kind == other->set->types[j]->kind) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            array_remove_at_unstable(&handle->set->types, i);
-            i--;
-            continue;
-        }
-
-        if (type->kind == TypeKind::Function) {
-            FunctionType* ftype = type->as_function();
-            FunctionType* other_ftype = other->set->types[j]->as_function();
-
-            bool result = function_type_intersect_with(ftype, other_ftype);
-            if (!result) {
-                array_remove_at_unstable(&handle->set->types, i);
-                i--;
-                continue;
-            }
-        }
-    }
-
-    if (handle->set->types.size == 0) {
-        // HACK(juraj): to allow us to report errors in a reasonable way,
-        // we need to know the original sets. This is a hack to allow us to
-        // restore the original set.
-        handle->set->types.size = original_size;
-        return false;
-    }
-
-    other->set = handle->set;
-    return true;
-}
-
-inline bool function_type_intersect_with(FunctionType* a, FunctionType* b) {
-    if (a->parameters.size != b->parameters.size) {
-        return false;
-    }
-
-    for (isize i = 0; i < a->parameters.size; i++) {
-        if (!type_set_intersect_if_result(a->parameters[i], b->parameters[i])) {
-            return false;
-        }
-    }
-
-    return type_set_intersect_if_result(a->return_type, b->return_type);
-}
+bool function_type_intersect_with(FunctionType* a, FunctionType* b);
 
 template <isize N>
 inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,

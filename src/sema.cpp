@@ -6,6 +6,7 @@
 struct SemaContext {
     Array<HashMap<String, AstNodeIdentifier*>> defs;
     AstNodeFor* current_for;
+    AstNodeFunction* current_function;
 };
 
 void sema_context_init(SemaContext* context, Arena* arena) {
@@ -50,19 +51,27 @@ void sema_context_pop_context(SemaContext* context) {
     context->defs.size -= 1;
 }
 
+void assign_type_set(AstNode* node, TypeSetHandle* type_set) {
+    core_assert(node);
+    core_assert(type_set);
+    core_assert(node->type_set == nullptr);
+    node->type_set = type_set;
+    array_push(&type_set->backreferences, &node->type_set);
+}
+
 void analyse_type(AstNode* node, Arena* arena) {
     core_assert(node);
     core_assert_msg(node->kind == AstNodeKind::Identifier, "Not implemented");
     AstNodeIdentifier* id = node->as_identifier();
 
     if (id->token.source == "int") {
-        node->type_set = type_set_make_with(Type::get_int(), arena);
+        assign_type_set(node, type_set_make_with(Type::get_int(), arena));
     } else if (id->token.source == "float") {
-        node->type_set = type_set_make_with(Type::get_float(), arena);
+        assign_type_set(node, type_set_make_with(Type::get_float(), arena));
     } else if (id->token.source == "string") {
-        node->type_set = type_set_make_with(Type::get_string(), arena);
+        assign_type_set(node, type_set_make_with(Type::get_string(), arena));
     } else if (id->token.source == "bool") {
-        node->type_set = type_set_make_with(Type::get_bool(), arena);
+        assign_type_set(node, type_set_make_with(Type::get_bool(), arena));
     } else {
         // User defined type
         core_assert_msg(false, "Not implemented");
@@ -83,11 +92,11 @@ void analyse_top_level_declarations(AstFile* file, SemaContext* context,
 
         if (node->type != nullptr) {
             analyse_type(node->type, arena);
-            node->name->type_set = node->type->type_set;
+            assign_type_set(node->name, node->type->type_set);
         } else {
-            node->name->type_set = type_set_make(0, arena);
+            assign_type_set(node->name, type_set_make(0, arena));
         }
-        node->type_set = type_set_make_with(Type::get_void(), arena);
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
 
         sema_context_define_value(context, node->name);
     }
@@ -109,9 +118,9 @@ void analyse_block(AstFile* file, SemaContext* context, AstNode* node,
 
     if (block->statements.size > 0) {
         AstNode* last = block->statements[block->statements.size - 1];
-        block->type_set = last->type_set;
+        assign_type_set(block, last->type_set);
     } else {
-        block->type_set = type_set_make(0, arena);
+        assign_type_set(block, type_set_make(0, arena));
     }
 
     sema_context_pop_context(context);
@@ -125,16 +134,20 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
         switch (literal->literal_kind) {
         case AstLiteralKind::Integer:
-            literal->type_set = type_set_make_with(Type::get_int(), arena);
+            assign_type_set(literal,
+                            type_set_make_with(Type::get_int(), arena));
             break;
         case AstLiteralKind::Float:
-            literal->type_set = type_set_make_with(Type::get_float(), arena);
+            assign_type_set(literal,
+                            type_set_make_with(Type::get_float(), arena));
             break;
         case AstLiteralKind::String:
-            literal->type_set = type_set_make_with(Type::get_string(), arena);
+            assign_type_set(literal,
+                            type_set_make_with(Type::get_string(), arena));
             break;
         case AstLiteralKind::Bool:
-            literal->type_set = type_set_make_with(Type::get_bool(), arena);
+            assign_type_set(literal,
+                            type_set_make_with(Type::get_bool(), arena));
             break;
         }
         break;
@@ -147,7 +160,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
                             node->as_identifier()->token.source.size,
                             node->as_identifier()->token.source.data);
         }
-        node->type_set = definition->type_set;
+        assign_type_set(node, definition->type_set);
         break;
     }
     case AstNodeKind::Binary: {
@@ -175,7 +188,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            node->type_set = bin->left->type_set;
+            assign_type_set(node, bin->left->type_set);
             break;
         }
 
@@ -203,7 +216,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            node->type_set = bin->left->type_set;
+            assign_type_set(node, bin->left->type_set);
             break;
         }
         case TokenKind::Assign:
@@ -212,7 +225,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            node->type_set = bin->left->type_set;
+            assign_type_set(node, bin->left->type_set);
             break;
         }
         case TokenKind::BinaryAnd:
@@ -234,7 +247,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            node->type_set = bin->left->type_set;
+            assign_type_set(node, bin->left->type_set);
             break;
         }
         case TokenKind::LogicalAnd:
@@ -256,7 +269,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            node->type_set = bin->left->type_set;
+            assign_type_set(node, bin->left->type_set);
             break;
         }
         case TokenKind::LBracket: {
@@ -288,7 +301,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
                 unary->operand->type_set, valid_types);
             core_assert(result);
 
-            node->type_set = unary->operand->type_set;
+            assign_type_set(node, unary->operand->type_set);
             break;
         }
         case TokenKind::Bang: {
@@ -296,7 +309,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
             bool result = type_set_intersect_if_result_kinds(
                 unary->operand->type_set, valid_types);
-            node->type_set = unary->operand->type_set;
+            assign_type_set(node, unary->operand->type_set);
             core_assert(result);
             break;
         }
@@ -328,7 +341,8 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
                                                    callee_type_set);
         core_assert(result);
 
-        call->type_set = return_type;
+        FunctionType* call_type = type_set_get_function(call->callee->type_set);
+        assign_type_set(call, call_type->return_type);
 
         break;
     }
@@ -352,7 +366,7 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             if_node->then_branch->type_set, if_node->else_branch->type_set);
         core_assert(result);
 
-        node->type_set = if_node->then_branch->type_set;
+        assign_type_set(node, if_node->then_branch->type_set);
         break;
     }
     case AstNodeKind::For: {
@@ -421,8 +435,8 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             } else {
                 param_type_set = type_set_make(0, arena);
             }
-            func->parameters[i]->name->type_set = param_type_set;
-            func->parameters[i]->type_set = param_type_set;
+            assign_type_set(func->parameters[i]->name, param_type_set);
+            assign_type_set(func->parameters[i], param_type_set);
             array_push(&parameters, param_type_set);
         }
 
@@ -436,9 +450,11 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
         FunctionType* func_type =
             FunctionType::make(parameters, return_type, arena);
-        func->type_set = type_set_make_with(func_type, arena);
+        assign_type_set(func, type_set_make_with(func_type, arena));
 
+        context->current_function = func;
         analyse_block(file, context, func->body, arena);
+        context->current_function = nullptr;
         sema_context_pop_context(context);
         break;
     }
@@ -476,9 +492,17 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
     }
     case AstNodeKind::Return: {
         AstNodeReturn* return_node = node->as_return();
+        core_assert(context->current_function);
         if (return_node->value) {
             analyse_expression(file, context, return_node->value, arena);
+            FunctionType* func_type =
+                type_set_get_function(context->current_function->type_set);
+
+            bool result = type_set_intersect_if_result(
+                func_type->return_type, return_node->value->type_set);
+            core_assert(result);
         }
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::Declaration: {
@@ -490,15 +514,15 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
 
         if (decl->type) {
             analyse_type(decl->type, arena);
-            decl->name->type_set = decl->type->type_set;
+            assign_type_set(decl->name, decl->type->type_set);
         } else {
-            decl->name->type_set = type_set_make(0, arena);
+            assign_type_set(decl->name, type_set_make(0, arena));
         }
 
         bool result = type_set_intersect_if_result(decl->name->type_set,
                                                    decl->value->type_set);
         core_assert(result);
-        node->type_set = decl->name->type_set;
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::Assignment: {
@@ -509,7 +533,7 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         bool result = type_set_intersect_if_result(assign->name->type_set,
                                                    assign->value->type_set);
         core_assert(result);
-        node->type_set = assign->name->type_set;
+        assign_type_set(node, assign->name->type_set);
         return;
     }
     case AstNodeKind::If: {

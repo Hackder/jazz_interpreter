@@ -232,3 +232,101 @@ String ast_serialize_debug(AstNode* node, Arena* arena) {
     memcpy(buffer, stream.str().c_str(), stream.str().size());
     return string_from_cstr(buffer);
 }
+
+FunctionType* type_set_get_function(TypeSetHandle* handle) {
+    core_assert(handle);
+    core_assert(handle->set->types.size == 1);
+    core_assert(handle->set->types[0]->kind == TypeKind::Function);
+    return handle->set->types[0]->as_function();
+}
+
+// Takes all backreferences from the second set and assigns them to the first
+// set. Basically everyone that referenced the second set now references the
+// first set.
+void type_set_reassign_all(TypeSetHandle* handle, TypeSetHandle* other) {
+    core_assert(handle);
+    core_assert(other);
+
+    for (isize i = 0; i < other->backreferences.size; i++) {
+        (*other->backreferences[i]) = handle;
+        array_push(&handle->backreferences, other->backreferences[i]);
+    }
+}
+
+// Performs an intersection between the two sets, modifying the first set.
+// If the resulting set would be empty, the function returns false. and
+// the original set is restored.
+// If the resulting set has some elements, the function returns true and leaves
+// the set modified.
+// The second set is never modified.
+bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other) {
+    core_assert(handle);
+    core_assert(other);
+
+    if (other->set->is_full) {
+        type_set_reassign_all(handle, other);
+        return true;
+    }
+
+    if (handle->set->is_full) {
+        type_set_reassign_all(other, handle);
+        return true;
+    }
+
+    isize original_size = handle->set->types.size;
+
+    for (isize i = 0; i < handle->set->types.size; i++) {
+        Type* type = handle->set->types[i];
+
+        bool found = false;
+        isize j = 0;
+        for (; j < other->set->types.size; j++) {
+            if (type->kind == other->set->types[j]->kind) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            array_remove_at_unstable(&handle->set->types, i);
+            i--;
+            continue;
+        }
+
+        if (type->kind == TypeKind::Function) {
+            FunctionType* ftype = type->as_function();
+            FunctionType* other_ftype = other->set->types[j]->as_function();
+
+            bool result = function_type_intersect_with(ftype, other_ftype);
+            if (!result) {
+                array_remove_at_unstable(&handle->set->types, i);
+                i--;
+                continue;
+            }
+        }
+    }
+
+    if (handle->set->types.size == 0) {
+        // HACK(juraj): to allow us to report errors in a reasonable way,
+        // we need to know the original sets. This is a hack to allow us to
+        // restore the original set.
+        handle->set->types.size = original_size;
+        return false;
+    }
+
+    type_set_reassign_all(handle, other);
+    return true;
+}
+
+bool function_type_intersect_with(FunctionType* a, FunctionType* b) {
+    if (a->parameters.size != b->parameters.size) {
+        return false;
+    }
+
+    for (isize i = 0; i < a->parameters.size; i++) {
+        if (!type_set_intersect_if_result(a->parameters[i], b->parameters[i])) {
+            return false;
+        }
+    }
+
+    return type_set_intersect_if_result(a->return_type, b->return_type);
+}

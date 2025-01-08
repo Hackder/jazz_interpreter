@@ -74,17 +74,16 @@ TEST(Sema, SimpleTypecheckFunctions) {
     arena_init(&arena, 2048);
     defer(arena_free(&arena));
     const char* source = R"SOURCE(
-        asdf :: fn(a, b) -> int {
-            return a + b
+        identity :: fn(a) {
+            return a + 1
         }
-
-        sum :: fn(a, b, c) -> int {
-            return a + asdf(b, c)
+        
+        sum :: fn(a, b) {
+            return a + identity(b)
         }
 
         main :: fn() {
-            a := "asdf"
-            c := sum(1, 1, "b")
+            c := sum(1, 2)
         }
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);
