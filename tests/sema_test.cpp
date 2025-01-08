@@ -75,7 +75,7 @@ TEST(Sema, SimpleTypecheckFunctions) {
     defer(arena_free(&arena));
     const char* source = R"SOURCE(
         identity :: fn(a) {
-            return a + 1
+            return a + identity(1)
         }
         
         sum :: fn(a, b) {
@@ -83,7 +83,7 @@ TEST(Sema, SimpleTypecheckFunctions) {
         }
 
         main :: fn() {
-            c := sum(1, 2)
+            c := sum(1, 3)
         }
     )SOURCE";
     AstFile* file = setup_ast_file(source, &arena);

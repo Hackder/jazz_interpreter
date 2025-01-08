@@ -247,6 +247,10 @@ void type_set_reassign_all(TypeSetHandle* handle, TypeSetHandle* other) {
     core_assert(handle);
     core_assert(other);
 
+    if (handle == other) {
+        return;
+    }
+
     for (isize i = 0; i < other->backreferences.size; i++) {
         (*other->backreferences[i]) = handle;
         array_push(&handle->backreferences, other->backreferences[i]);
