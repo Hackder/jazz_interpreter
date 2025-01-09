@@ -1,10 +1,10 @@
 #include "sema.hpp"
 #include "ast.hpp"
 #include "core.hpp"
-#include <iostream>
 
 struct SemaContext {
     Array<HashMap<String, AstNodeIdentifier*>> defs;
+    bool is_for_expr;
     AstNodeFor* current_for;
     AstNodeFunction* current_function;
 };
@@ -194,7 +194,27 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
         case TokenKind::Minus:
         case TokenKind::Asterisk:
-        case TokenKind::Slash:
+        case TokenKind::Slash: {
+            TypeKind valid_types[] = {TypeKind::Integer, TypeKind::Float};
+
+            {
+                bool result = type_set_intersect_if_result_kinds(
+                    bin->left->type_set, valid_types);
+                core_assert(result);
+            }
+
+            {
+                bool result = type_set_intersect_if_result_kinds(
+                    bin->right->type_set, valid_types);
+                core_assert(result);
+            }
+
+            bool result = type_set_intersect_if_result(bin->left->type_set,
+                                                       bin->right->type_set);
+            core_assert(result);
+            assign_type_set(node, bin->left->type_set);
+            break;
+        }
         case TokenKind::LessThan:
         case TokenKind::LessEqual:
         case TokenKind::GreaterThan:
@@ -216,16 +236,22 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            assign_type_set(node, bin->left->type_set);
+            assign_type_set(node, type_set_make_with(Type::get_bool(), arena));
             break;
         }
-        case TokenKind::Assign:
+        case TokenKind::Assign: {
+            bool result = type_set_intersect_if_result(bin->left->type_set,
+                                                       bin->right->type_set);
+            core_assert(result);
+            assign_type_set(node, type_set_make_with(Type::get_void(), arena));
+            break;
+        }
         case TokenKind::Equal:
         case TokenKind::NotEqual: {
             bool result = type_set_intersect_if_result(bin->left->type_set,
                                                        bin->right->type_set);
             core_assert(result);
-            assign_type_set(node, bin->left->type_set);
+            assign_type_set(node, type_set_make_with(Type::get_bool(), arena));
             break;
         }
         case TokenKind::BinaryAnd:
@@ -395,16 +421,23 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         if (for_node->condition) {
             analyse_expression(file, context, for_node->condition, arena);
 
-            // TODO(juraj): expression must evaluate to a boolean
+            TypeKind valid_condition_result[] = {TypeKind::Bool};
+            bool result = type_set_intersect_if_result_kinds(
+                for_node->condition->type_set, valid_condition_result);
+            core_assert(result);
         }
 
         if (for_node->update) {
             analyse_statement(file, context, for_node->update, arena);
         }
 
+        assign_type_set(for_node, type_set_make(1, arena));
+
         core_assert(for_node->then_branch);
         context->current_for = for_node;
+        context->is_for_expr = true;
         analyse_block(file, context, for_node->then_branch, arena);
+        context->is_for_expr = false;
         context->current_for = nullptr;
         sema_context_pop_context(context);
 
@@ -412,7 +445,15 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
             core_assert(for_node->else_branch == nullptr);
         } else {
             core_assert(for_node->else_branch);
+            context->current_for = for_node;
+            context->is_for_expr = true;
             analyse_block(file, context, for_node->else_branch, arena);
+            context->is_for_expr = false;
+            context->current_for = nullptr;
+
+            bool result = type_set_intersect_if_result(
+                for_node->type_set, for_node->else_branch->type_set);
+            core_assert(result);
         }
 
         break;
@@ -465,7 +506,6 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
     case AstNodeKind::Parameter:
     case AstNodeKind::Declaration:
     case AstNodeKind::Assignment: {
-        std::cerr << node->kind << std::endl;
         core_assert_msg(false, "Unexpected node, expected expression");
     }
     }
@@ -482,12 +522,25 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         AstNodeBreak* break_node = node->as_break();
         core_assert(context->current_for);
         if (break_node->value) {
+            // break with value is only
+            // allowed in for expressions
+            core_assert(context->is_for_expr);
             analyse_expression(file, context, break_node->value, arena);
+
+            bool result = type_set_intersect_if_result(
+                context->current_for->type_set, break_node->value->type_set);
+            core_assert(result);
+        } else {
+            // break without value is only
+            // allowed in for statements
+            core_assert(!context->is_for_expr);
         }
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::Continue: {
         core_assert(context->current_for);
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::Return: {
@@ -533,12 +586,17 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         bool result = type_set_intersect_if_result(assign->name->type_set,
                                                    assign->value->type_set);
         core_assert(result);
-        assign_type_set(node, assign->name->type_set);
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::If: {
         AstNodeIf* if_node = node->as_if();
         analyse_expression(file, context, if_node->condition, arena);
+
+        TypeKind valid_condition_result[] = {TypeKind::Bool};
+        bool result = type_set_intersect_if_result_kinds(
+            if_node->condition->type_set, valid_condition_result);
+        core_assert(result);
 
         core_assert(if_node->then_branch);
 
@@ -548,6 +606,7 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
             analyse_block(file, context, if_node->else_branch, arena);
         }
 
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::For: {
@@ -576,7 +635,10 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         if (for_node->condition) {
             analyse_expression(file, context, for_node->condition, arena);
 
-            // Expression must evaluate to a boolean
+            TypeKind valid_condition_result[] = {TypeKind::Bool};
+            bool result = type_set_intersect_if_result_kinds(
+                for_node->condition->type_set, valid_condition_result);
+            core_assert(result);
         }
 
         if (for_node->update) {
@@ -598,6 +660,7 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
             analyse_block(file, context, for_node->else_branch, arena);
         }
 
+        assign_type_set(node, type_set_make_with(Type::get_void(), arena));
         return;
     }
     case AstNodeKind::Parameter:

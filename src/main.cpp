@@ -1,5 +1,6 @@
 #include "core.hpp"
 #include "parser.hpp"
+#include "sema.hpp"
 #include <cstdio>
 #include <iostream>
 
@@ -75,6 +76,8 @@ int main(int argc, char* argv[]) {
         }
         return 1;
     }
+
+    semantic_analysis(file, &arena);
 
     for (isize i = 0; i < file->ast.declarations.size; i++) {
         AstNode* node = file->ast.declarations[i];
