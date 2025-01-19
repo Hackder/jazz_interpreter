@@ -291,7 +291,7 @@ bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other) {
             }
         }
         if (!found) {
-            array_remove_at_unstable(&handle->set->types, i);
+            array_remove_at_unordered(&handle->set->types, i);
             i--;
             continue;
         }
@@ -302,7 +302,7 @@ bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other) {
 
             bool result = function_type_intersect_with(ftype, other_ftype);
             if (!result) {
-                array_remove_at_unstable(&handle->set->types, i);
+                array_remove_at_unordered(&handle->set->types, i);
                 i--;
                 continue;
             }

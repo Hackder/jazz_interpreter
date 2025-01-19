@@ -160,7 +160,7 @@ inline bool type_set_intersect_if_result_kinds(TypeSetHandle* handle,
         }
 
         if (!found) {
-            array_remove_at_unstable(&handle->set->types, i);
+            array_remove_at_unordered(&handle->set->types, i);
             i--;
         }
     }

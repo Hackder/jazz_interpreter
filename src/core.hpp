@@ -318,7 +318,7 @@ template <typename T> inline void array_push(Array<T>* array, T value) {
 }
 
 template <typename T>
-inline T array_remove_at_unstable(Array<T>* array, isize index) {
+inline T array_remove_at_unordered(Array<T>* array, isize index) {
     core_assert_msg(index >= 0, "%ld < 0", index);
     core_assert_msg(index < array->size, "%ld >= %ld", index, array->size);
 
@@ -342,6 +342,31 @@ inline void array_clone_to(Array<T>* source, Array<T>* dest, Arena* arena) {
         }
         dest->size = source->size;
     }
+}
+
+/// ------------------
+/// Slice
+/// ------------------
+
+template <typename T> struct Slice {
+    T* data;
+    isize size;
+
+    T& operator[](isize index) {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+
+    const T& operator[](isize index) const {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+};
+
+template <typename T> inline Slice<T> slice_from_array(Array<T>* array) {
+    return Slice<T>{array->data, array->size};
 }
 
 /// ------------------
