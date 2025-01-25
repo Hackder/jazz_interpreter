@@ -1,6 +1,8 @@
+#include "compiler.hpp"
 #include "core.hpp"
 #include "parser.hpp"
 #include "sema.hpp"
+#include "vm.hpp"
 #include <cstdio>
 #include <iostream>
 
@@ -79,11 +81,23 @@ int main(int argc, char* argv[]) {
 
     semantic_analysis(file, &arena);
 
-    for (isize i = 0; i < file->ast.declarations.size; i++) {
-        AstNode* node = file->ast.declarations[i];
-        std::cout << ast_serialize_debug(node, &arena) << std::endl
-                  << std::endl;
-    }
+    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
 
-    return 0;
+    Arena exec_arena = {};
+    arena_init(&exec_arena, 128 * 1024);
+    defer(arena_free(&exec_arena));
+    defer({
+        std::cerr << "Program memory used: " << arena_get_size(&exec_arena)
+                  << " bytes" << std::endl;
+    });
+
+    VM* vm = vm_make(code_unit, 8 * 1024 * 1024, &exec_arena);
+    while (true) {
+        bool did_work = vm_execute_inst(vm);
+        if (!did_work) {
+            // The top value on the stack is the exit code
+            u8 exit_code = *stack_pop<u8>(&vm->stack);
+            return exit_code;
+        }
+    }
 }

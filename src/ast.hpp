@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bytecode.hpp"
 #include "core.hpp"
 #include "tokenizer.hpp"
 
@@ -17,29 +18,30 @@ struct TypeSetHandle;
 
 struct Type {
     TypeKind kind;
+    isize size;
 
     static Type* get_int() {
-        static Type type = {TypeKind::Integer};
+        static Type type = {TypeKind::Integer, 8};
         return &type;
     }
 
     static Type* get_float() {
-        static Type type = {TypeKind::Float};
+        static Type type = {TypeKind::Float, 8};
         return &type;
     }
 
     static Type* get_string() {
-        static Type type = {TypeKind::String};
+        static Type type = {TypeKind::String, 8};
         return &type;
     }
 
     static Type* get_bool() {
-        static Type type = {TypeKind::Bool};
+        static Type type = {TypeKind::Bool, 8};
         return &type;
     }
 
     static Type* get_void() {
-        static Type type = {TypeKind::Void};
+        static Type type = {TypeKind::Void, 0};
         return &type;
     }
 
@@ -84,6 +86,7 @@ struct FunctionType : public Type {
         FunctionType* type = arena_alloc<FunctionType>(arena);
         type->kind = TypeKind::Function;
         type->parameters = parameters;
+        type->size = 8;
         for (isize i = 0; i < parameters.size; i++) {
             array_push(&parameters[i]->backreferences, &type->parameters[i]);
         }
@@ -252,7 +255,7 @@ struct AstNodeLiteral : public AstNode {
     AstLiteralKind literal_kind;
 
     // Used for compilation
-    isize static_data_offset;
+    MemPtr static_data_ptr;
 
     static AstNodeLiteral* make(Token token, AstLiteralKind kind,
                                 Arena* arena) {
@@ -260,7 +263,7 @@ struct AstNodeLiteral : public AstNode {
         node->kind = AstNodeKind::Literal;
         node->token = token;
         node->literal_kind = kind;
-        node->static_data_offset = -1;
+        node->static_data_ptr = mem_ptr_invalid();
         return node;
     }
 };
@@ -268,6 +271,9 @@ struct AstNodeLiteral : public AstNode {
 struct AstNodeIdentifier : public AstNode {
     Token token;
     AstNodeIdentifier* def;
+
+    // Used for compilation
+    MemPtr ptr;
 
     static AstNodeIdentifier* make(Token token, Arena* arena) {
         AstNodeIdentifier* node = arena_alloc<AstNodeIdentifier>(arena);

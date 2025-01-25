@@ -81,6 +81,10 @@ bool vm_execute_inst(VM* vm) {
         vm->fp = *stack_pop<isize>(&vm->stack);
         break;
     }
+    case InstType::Exit: {
+        stack_push(&vm->stack, current_inst.exit.code);
+        return false;
+    }
     }
 
     return true;

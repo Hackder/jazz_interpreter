@@ -1,19 +1,20 @@
 #include "compiler.hpp"
 #include "ast.hpp"
+#include "bytecode.hpp"
 #include "core.hpp"
 
 struct CompilerContext {
     Arena* arena;
     Array<Slice<Inst>> functions;
     Array<u8> static_data;
-    HashMap<String, isize> function_name_offset;
+    HashMap<String, isize> function_name_offset_map;
 };
 
 template <typename T>
 isize ctx_push_static_data(CompilerContext* ctx, T value) {
     isize offset = ctx->static_data.size;
     u8* data = (u8*)&value;
-    for (isize i = 0; i < sizeof(T); i++) {
+    for (isize i = 0; i < (isize)sizeof(T); i++) {
         array_push(&ctx->static_data, data[i]);
     }
     return offset;
@@ -53,23 +54,60 @@ i64 string_parse_to_i64(String str) {
     return result;
 }
 
+void compile_block(CompilerContext* ctx, AstNodeBlock* block,
+                   Array<Inst>* instructions) {
+    for (isize i = 0; i < block->statements.size; i++) {
+        // TODO: implement
+    }
+}
+
+void compile_function(CompilerContext* ctx, AstNodeFunction* function,
+                      isize function_offset) {
+    Array<Inst> instructions = {};
+    array_init(&instructions, 32, ctx->arena);
+
+    isize offset = 0;
+    for (isize i = function->parameters.size - 1; i >= 0; i--) {
+        AstNodeParameter* param = function->parameters[i];
+        Type* type = type_set_get_single(param->type_set);
+        offset -= type->size;
+        param->name->ptr = mem_ptr_stack_rel(offset);
+    }
+
+    compile_block(ctx, function->body, &instructions);
+    array_push(&instructions, inst_return());
+
+    ctx->functions[function_offset] = slice_from_array(&instructions);
+}
+
+void add_init_function(CompilerContext* ctx) {
+    isize main_function_offset = hash_map_must_get(
+        &ctx->function_name_offset_map, string_from_cstr("main"));
+
+    Inst instructions[] = {
+        inst_call(main_function_offset),
+        inst_exit(0),
+    };
+
+    ctx->functions[0] = slice_from_inline_alloc(instructions, ctx->arena);
+}
+
 CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
     Array<Slice<Inst>> functions = {};
     array_init(&functions, ast->declarations.size, arena);
+    array_push(&functions, Slice<Inst>{});
 
     Array<u8> static_data = {};
     array_init(&static_data, 1024, arena);
 
     HashMap<String, isize> function_name_offset = {};
     hash_map_init(&function_name_offset, ast->declarations.size, arena);
-    hash_map_insert_or_set(&function_name_offset, string_from_cstr("main"),
-                           (isize)0);
 
     CompilerContext ctx = {
         .arena = arena,
         .functions = functions,
         .static_data = static_data,
-        .function_name_offset = function_name_offset,
+        .function_name_offset_map = function_name_offset,
     };
 
     // Do a first pass, where we register all the functions and all the
@@ -80,7 +118,7 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
     for (isize i = 0; i < ast->declarations.size; i++) {
         AstNode* node = ast->declarations[i];
         AstNodeDeclaration* decl = node->as_declaration();
-        AstNodeLiteral* name = decl->name->as_literal();
+        AstNodeIdentifier* name = decl->name->as_identifier();
         AstNode* value = decl->value;
         Type* type = type_set_get_single(value->type_set);
 
@@ -90,7 +128,7 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
             core_assert(literal->literal_kind == AstLiteralKind::Integer);
             i64 value = string_parse_to_i64(literal->token.source);
             isize offset = ctx_push_static_data(&ctx, value);
-            literal->static_data_offset = offset;
+            literal->static_data_ptr = mem_ptr_static_data(offset);
             break;
         }
         case TypeKind::Float: {
@@ -109,13 +147,10 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
             break;
         }
         case TypeKind::Function: {
-            if (name->token.source == string_from_cstr("main")) {
-                break;
-            }
-
-            hash_map_insert_or_set(&ctx.function_name_offset,
+            hash_map_insert_or_set(&ctx.function_name_offset_map,
                                    name->token.source, next_function_offset);
             next_function_offset += 1;
+            array_push(&ctx.functions, Slice<Inst>{});
             break;
         }
         case TypeKind::Void: {
@@ -125,9 +160,37 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
         }
     }
 
+    for (isize i = 0; i < ast->declarations.size; i++) {
+        AstNode* node = ast->declarations[i];
+        AstNodeDeclaration* decl = node->as_declaration();
+        AstNodeIdentifier* name = decl->name->as_identifier();
+        AstNode* value = decl->value;
+        Type* type = type_set_get_single(value->type_set);
+
+        switch (type->kind) {
+        case TypeKind::Function: {
+            isize function_offset = hash_map_must_get(
+                &ctx.function_name_offset_map, name->token.source);
+            compile_function(&ctx, value->as_function(), function_offset);
+        }
+        case TypeKind::Integer:
+        case TypeKind::Float:
+        case TypeKind::String:
+        case TypeKind::Bool: {
+            continue;
+        }
+        case TypeKind::Void: {
+            core_assert(false);
+            break;
+        }
+        }
+    }
+
+    add_init_function(&ctx);
+
     CodeUnit code = {
-        .static_data = slice_from_array(&static_data),
-        .functions = slice_from_array(&functions),
+        .static_data = slice_from_array(&ctx.static_data),
+        .functions = slice_from_array(&ctx.functions),
     };
 
     return code;

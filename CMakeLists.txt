@@ -57,6 +57,7 @@ add_executable(
   ./tests/token_pos_test.cpp
   ./tests/sema_test.cpp
   ./tests/vm_test.cpp
+  ./tests/e2e.cpp
 )
 target_compile_options(jazz_test PRIVATE)
 

@@ -689,11 +689,6 @@ void semantic_analysis(AstFile* file, Arena* arena) {
         analyse_expression(file, &context, node->value, arena);
         bool result = type_set_intersect_if_result(node->name->type_set,
                                                    node->value->type_set);
-        if (node->value->type_set->set->types.size > 0) {
-            FunctionType* func_type =
-                node->value->type_set->set->types[0]->as_function();
-            core_assert(func_type);
-        }
         core_assert(result);
     }
 }
