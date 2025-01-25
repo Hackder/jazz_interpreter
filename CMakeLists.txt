@@ -19,7 +19,7 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
-add_compile_options(-Wall -Wextra -Wpedantic -Wno-gnu-zero-variadic-macro-arguments)
+add_compile_options(-Wall -Wextra -Wpedantic -Wuninitialized -Wno-gnu-zero-variadic-macro-arguments)
 
 set(SOURCE_FILES
   ./src/core.hpp
@@ -33,6 +33,11 @@ set(SOURCE_FILES
   ./src/token_pos.cpp
   ./src/sema.hpp
   ./src/sema.cpp
+  ./src/bytecode.hpp
+  ./src/compiler.hpp
+  ./src/compiler.cpp
+  ./src/vm.hpp
+  ./src/vm.cpp
 )
 
 add_executable(
@@ -51,6 +56,7 @@ add_executable(
   ./tests/parser_test.cpp
   ./tests/token_pos_test.cpp
   ./tests/sema_test.cpp
+  ./tests/vm_test.cpp
 )
 target_compile_options(jazz_test PRIVATE)
 

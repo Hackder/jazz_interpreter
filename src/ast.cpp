@@ -321,6 +321,13 @@ bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other) {
     return true;
 }
 
+Type* type_set_get_single(TypeSetHandle* handle) {
+    core_assert(handle);
+    core_assert(handle->set->is_full == false);
+    core_assert(handle->set->types.size == 1);
+    return handle->set->types[0];
+}
+
 bool function_type_intersect_with(FunctionType* a, FunctionType* b) {
     if (a->parameters.size != b->parameters.size) {
         return false;

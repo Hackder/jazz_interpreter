@@ -178,7 +178,7 @@ struct String {
     const char* data = nullptr;
     isize size = 0;
 
-    inline char operator[](isize index) {
+    const char& operator[](isize index) {
         core_assert_msg(index >= 0, "%ld < 0", index);
         core_assert_msg(index < size, "%ld >= %ld", index, size);
         return data[index];
@@ -364,6 +364,13 @@ template <typename T> struct Slice {
         return data[index];
     }
 };
+
+template <typename T, isize N>
+inline Slice<T> slice_from_inline_alloc(const T (&data)[N], Arena* arena) {
+    T* new_data = arena_alloc<T>(arena, N);
+    memcpy(new_data, data, sizeof(T) * N);
+    return Slice<T>{new_data, N};
+}
 
 template <typename T> inline Slice<T> slice_from_array(Array<T>* array) {
     return Slice<T>{array->data, array->size};

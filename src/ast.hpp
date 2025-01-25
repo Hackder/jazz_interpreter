@@ -130,6 +130,8 @@ void type_set_reassign_all(TypeSetHandle* handle, TypeSetHandle* other);
 
 bool type_set_intersect_if_result(TypeSetHandle* handle, TypeSetHandle* other);
 
+Type* type_set_get_single(TypeSetHandle* handle);
+
 bool function_type_intersect_with(FunctionType* a, FunctionType* b);
 
 template <isize N>
@@ -249,12 +251,16 @@ struct AstNodeLiteral : public AstNode {
     Token token;
     AstLiteralKind literal_kind;
 
+    // Used for compilation
+    isize static_data_offset;
+
     static AstNodeLiteral* make(Token token, AstLiteralKind kind,
                                 Arena* arena) {
         AstNodeLiteral* node = arena_alloc<AstNodeLiteral>(arena);
         node->kind = AstNodeKind::Literal;
         node->token = token;
         node->literal_kind = kind;
+        node->static_data_offset = -1;
         return node;
     }
 };
