@@ -48,6 +48,14 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     semantic_analysis(file, &arena);
     CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
 
+    for (isize i = 0; i < code_unit.functions.size; i++) {
+        Slice<Inst> function = code_unit.functions[i];
+        for (isize j = 0; j < function.size; j++) {
+            std::cerr << function[j] << std::endl;
+        }
+        std::cerr << std::endl;
+    }
+
     Arena exec_arena = {};
     arena_init(&exec_arena, 128 * 1024);
     defer(arena_free(&exec_arena));
@@ -60,6 +68,7 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     vm->stdout = stdout_file;
     vm->stderr = stderr_file;
     while (true) {
+        Inst inst = vm->code.functions[vm->fp][vm->ip];
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
@@ -91,6 +100,39 @@ TEST(e2e, Constants) {
 
         main :: fn() {
 
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, Declaration) {
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        thing :: 13
+
+        main :: fn() {
+            a := 3
+            b := true
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleAddition) {
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        thing :: 13
+
+        main :: fn() {
+            a := 3 + 2
         }
     )SOURCE";
     u8 exit_code = execute_to_end(source, stdout_file, stderr_file);

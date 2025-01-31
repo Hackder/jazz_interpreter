@@ -22,6 +22,17 @@ template <typename T> inline T* stack_pop(Stack* stack) {
     return (T*)(stack->data + stack->size);
 }
 
+inline void stack_push_size(Stack* stack, isize size) {
+    core_assert(stack->size + size <= stack->capacity);
+    memset(stack->data + stack->size, 0, size);
+    stack->size += size;
+}
+
+inline void stack_pop_size(Stack* stack, isize size) {
+    core_assert(stack->size >= size);
+    stack->size -= size;
+}
+
 struct VM {
     CodeUnit code;
 
@@ -116,6 +127,37 @@ template <typename T> inline void vm_ptr_write(VM* vm, MemPtr ptr, T value) {
         break;
     }
     }
+}
+
+inline u8* vm_ptr_to_raw(VM* vm, MemPtr ptr) {
+    MemPtrType type = ptr.type;
+
+    switch (type) {
+    case MemPtrType::Invalid: {
+        core_assert_msg(false,
+                        "Null pointer dereference. This should never happen");
+        break;
+    }
+    case MemPtrType::StackAbs: {
+        core_assert(ptr.mem_offset <= vm->stack.size);
+        return vm->stack.data + ptr.mem_offset;
+    }
+    case MemPtrType::StackRel: {
+        core_assert(vm->bp + ptr.mem_offset <= vm->stack.size);
+        return vm->stack.data + vm->bp + ptr.mem_offset;
+    }
+    case MemPtrType::Heap: {
+        // TODO(juraj): heap?
+        core_assert(false);
+        break;
+    }
+    case MemPtrType::StaticData: {
+        core_assert(ptr.mem_offset <= vm->code.static_data.size);
+        return vm->code.static_data.data + ptr.mem_offset;
+    }
+    }
+
+    core_assert(false);
 }
 
 bool vm_execute_inst(VM* vm);

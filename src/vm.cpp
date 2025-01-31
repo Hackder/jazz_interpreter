@@ -72,11 +72,14 @@ bool vm_execute_inst(VM* vm) {
     case InstType::Call: {
         stack_push(&vm->stack, vm->fp);
         stack_push(&vm->stack, vm->ip);
+        stack_push(&vm->stack, vm->bp);
         vm->fp = current_inst.call.fp;
         vm->ip = 0;
+        vm->bp = vm->stack.size;
         break;
     }
     case InstType::Return: {
+        vm->bp = *stack_pop<isize>(&vm->stack);
         vm->ip = *stack_pop<isize>(&vm->stack);
         vm->fp = *stack_pop<isize>(&vm->stack);
         break;
@@ -84,6 +87,21 @@ bool vm_execute_inst(VM* vm) {
     case InstType::Exit: {
         stack_push(&vm->stack, current_inst.exit.code);
         return false;
+    }
+    case InstType::Mov: {
+        isize size = current_inst.mov.size;
+        u8* src = vm_ptr_to_raw(vm, current_inst.mov.src);
+        u8* dest = vm_ptr_to_raw(vm, current_inst.mov.dest);
+        memcpy(dest, src, size);
+        break;
+    }
+    case InstType::PushStack: {
+        stack_push_size(&vm->stack, current_inst.push_stack.size);
+        break;
+    }
+    case InstType::PopStack: {
+        stack_pop_size(&vm->stack, current_inst.pop_stack.size);
+        break;
     }
     }
 

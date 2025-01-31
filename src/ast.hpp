@@ -36,7 +36,7 @@ struct Type {
     }
 
     static Type* get_bool() {
-        static Type type = {TypeKind::Bool, 8};
+        static Type type = {TypeKind::Bool, 1};
         return &type;
     }
 
@@ -279,6 +279,7 @@ struct AstNodeIdentifier : public AstNode {
         AstNodeIdentifier* node = arena_alloc<AstNodeIdentifier>(arena);
         node->kind = AstNodeKind::Identifier;
         node->token = token;
+        node->ptr = mem_ptr_invalid();
         return node;
     }
 };

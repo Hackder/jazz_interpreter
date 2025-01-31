@@ -1,8 +1,9 @@
 #pragma once
 
 #include "core.hpp"
+#include <ostream>
 
-enum class MemPtrType {
+enum class MemPtrType : u8 {
     Invalid = 0,
     StackAbs = 1,
     // A poiter relative to BP (this is useful for local variables and function
@@ -84,6 +85,20 @@ struct InstCall {
 
 struct InstReturn {};
 
+struct InstMov {
+    MemPtr dest;
+    MemPtr src;
+    isize size;
+};
+
+struct InstPushStack {
+    isize size;
+};
+
+struct InstPopStack {
+    isize size;
+};
+
 struct InstExit {
     u8 code;
 };
@@ -93,6 +108,9 @@ enum class InstType {
     UnaryOp,
     Call,
     Return,
+    Mov,
+    PushStack,
+    PopStack,
     Exit,
 };
 
@@ -103,6 +121,9 @@ struct Inst {
         InstUnaryOp unary;
         InstCall call;
         InstReturn ret;
+        InstMov mov;
+        InstPushStack push_stack;
+        InstPopStack pop_stack;
         InstExit exit;
     };
 };
@@ -126,6 +147,21 @@ inline Inst inst_call(isize fp) {
 
 inline Inst inst_return() { return Inst{.type = InstType::Return, .ret = {}}; }
 
+inline Inst inst_mov(MemPtr dest, MemPtr src, isize size) {
+    return Inst{.type = InstType::Mov,
+                .mov = InstMov{.dest = dest, .src = src, .size = size}};
+}
+
+inline Inst inst_push_stack(isize size) {
+    core_assert(size >= 0);
+    return Inst{.type = InstType::PushStack, .push_stack = InstPushStack{size}};
+}
+
+inline Inst inst_pop_stack(isize size) {
+    core_assert(size >= 0);
+    return Inst{.type = InstType::PopStack, .pop_stack = InstPopStack{size}};
+}
+
 inline Inst inst_exit(u8 code) {
     return Inst{.type = InstType::Exit, .exit = InstExit{.code = code}};
 }
@@ -135,3 +171,154 @@ struct CodeUnit {
     // By convention, the first function is the entry point
     Slice<Slice<Inst>> functions;
 };
+
+inline std::ostream& operator<<(std::ostream& os, MemPtr ptr) {
+    switch (ptr.type) {
+    case MemPtrType::Invalid:
+        os << "(Invalid)";
+        break;
+    case MemPtrType::StackAbs:
+        os << "(StackAbs " << ptr.mem_offset << ")";
+        break;
+    case MemPtrType::StackRel:
+        os << "(StackRel " << ptr.mem_offset << ")";
+        break;
+    case MemPtrType::Heap:
+        os << "(Heap " << ptr.mem_offset << ")";
+        break;
+    case MemPtrType::StaticData:
+        os << "(StaticData " << ptr.mem_offset << ")";
+        break;
+    }
+
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const BinOperand& op) {
+    switch (op) {
+    case BinOperand::Int_Add:
+        os << "Int_Add";
+        break;
+    case BinOperand::Int_Sub:
+        os << "Int_Sub";
+        break;
+    case BinOperand::Int_Mul:
+        os << "Int_Mul";
+        break;
+    case BinOperand::Int_Div:
+        os << "Int_Div";
+        break;
+    case BinOperand::Int_BinaryAnd:
+        os << "Int_BinaryAnd";
+        break;
+    case BinOperand::Int_BinaryOr:
+        os << "Int_BinaryOr";
+        break;
+    case BinOperand::Int_Equal:
+        os << "Int_Equal";
+        break;
+    case BinOperand::Int_NotEqual:
+        os << "Int_NotEqual";
+        break;
+    case BinOperand::Float_Add:
+        os << "Float_Add";
+        break;
+    case BinOperand::Float_Sub:
+        os << "Float_Sub";
+        break;
+    case BinOperand::Float_Mul:
+        os << "Float_Mul";
+        break;
+    case BinOperand::Float_Div:
+        os << "Float_Div";
+        break;
+    case BinOperand::Float_Equal:
+        os << "Float_Equal";
+        break;
+    case BinOperand::Float_NotEqual:
+        os << "Float_NotEqual";
+        break;
+    case BinOperand::Bool_LessThan:
+        os << "Bool_LessThan";
+        break;
+    case BinOperand::Bool_LessEqual:
+        os << "Bool_LessEqual";
+        break;
+    case BinOperand::Bool_GreaterThan:
+        os << "Bool_GreaterThan";
+        break;
+    case BinOperand::Bool_GreaterEqual:
+        os << "Bool_GreaterEqual";
+        break;
+    case BinOperand::Bool_LogicalAnd:
+        os << "Bool_LogicalAnd";
+        break;
+    case BinOperand::Bool_LogicalOr:
+        os << "Bool_LogicalOr";
+        break;
+    case BinOperand::Bool_Equal:
+        os << "Bool_Equal";
+        break;
+    case BinOperand::Bool_NotEqual:
+        os << "Bool_NotEqual";
+        break;
+    }
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const UnaryOperand& op) {
+    switch (op) {
+    case UnaryOperand::Int_Negation:
+        os << "Int_Negation";
+        break;
+    case UnaryOperand::Float_Negation:
+        os << "Float_Negation";
+        break;
+    case UnaryOperand::Bool_Not:
+        os << "Bool_Not";
+        break;
+    }
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Inst& inst) {
+    switch (inst.type) {
+    case InstType::BinaryOp: {
+        os << "BinaryOp(" << inst.binary.op << " " << inst.binary.dest << " "
+           << inst.binary.left << " " << inst.binary.right << ")";
+        break;
+    }
+    case InstType::UnaryOp: {
+        os << "UnaryOp(" << inst.unary.op << " " << inst.unary.dest << " "
+           << inst.unary.operand << ")";
+        break;
+    }
+    case InstType::Call: {
+        os << "Call(" << inst.call.fp << ")";
+        break;
+    }
+    case InstType::Return: {
+        os << "Return";
+        break;
+    }
+    case InstType::Mov: {
+        os << "Mov(" << inst.mov.dest << " " << inst.mov.src << " "
+           << inst.mov.size << ")";
+        break;
+    }
+    case InstType::PushStack: {
+        os << "PushStack(" << inst.push_stack.size << ")";
+        break;
+    }
+    case InstType::PopStack: {
+        os << "PopStack(" << inst.pop_stack.size << ")";
+        break;
+    }
+    case InstType::Exit: {
+        os << "Exit(" << inst.exit.code << ")";
+        break;
+    }
+    }
+
+    return os;
+}
