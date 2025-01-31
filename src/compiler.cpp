@@ -258,9 +258,15 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         switch (callee_ident->def->kind) {
         case AstNodeKind::Declaration: {
             AstNodeDeclaration* decl = callee_ident->def->as_declaration();
-            isize new_fp = decl->value->as_function()->offset;
-            Inst call_inst = inst_call(new_fp);
-            array_push(instructions, call_inst);
+            AstNodeFunction* fn = decl->value->as_function();
+            if (fn->builtin != nullptr) {
+                Inst call_inst = inst_call_builtin(fn->builtin);
+                array_push(instructions, call_inst);
+            } else {
+                isize new_fp = fn->offset;
+                Inst call_inst = inst_call(new_fp);
+                array_push(instructions, call_inst);
+            }
             break;
         }
         case AstNodeKind::Parameter: {

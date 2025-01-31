@@ -38,6 +38,8 @@ set(SOURCE_FILES
   ./src/compiler.cpp
   ./src/vm.hpp
   ./src/vm.cpp
+  ./src/builtin.hpp
+  ./src/builtin.cpp
 )
 
 add_executable(

@@ -1,6 +1,15 @@
 #include "sema.hpp"
 #include "ast.hpp"
+#include "builtin.hpp"
 #include "core.hpp"
+
+void assign_type_set(AstNode* node, TypeSetHandle* type_set) {
+    core_assert(node);
+    core_assert(type_set);
+    core_assert(node->type_set == nullptr);
+    node->type_set = type_set;
+    array_push(&type_set->backreferences, &node->type_set);
+}
 
 struct SemaContext {
     Array<HashMap<String, AstNode*>> defs;
@@ -20,6 +29,35 @@ void sema_context_define_value(SemaContext* context, AstNodeIdentifier* ident,
         &context->defs[context->defs.size - 1];
 
     hash_map_insert_or_set(current_context, ident->token.source, def);
+}
+
+void sema_context_define_builtin(SemaContext* context,
+                                 BuiltinFunction* function, Arena* arena) {
+    core_assert(context->defs.size > 0);
+    HashMap<String, AstNode*>* current_context =
+        &context->defs[context->defs.size - 1];
+
+    Array<AstNodeParameter*> parameters;
+    array_init(&parameters, 0, arena);
+    AstNodeFunction* node = AstNodeFunction::make(
+        parameters, nullptr, nullptr,
+        Token{.kind = TokenKind::Invalid, .source = {}}, arena);
+    node->builtin = (void*)function->ptr;
+
+    TypeSetHandle* function_type = type_set_make_with(&function->type, arena);
+    assign_type_set(node, function_type);
+
+    AstNodeIdentifier* ident = AstNodeIdentifier::make(
+        Token{.kind = TokenKind::Identifier, .source = function->name}, arena);
+    assign_type_set(ident, function_type);
+
+    bool result = type_set_intersect_if_result(node->type_set, ident->type_set);
+    core_assert(result);
+
+    AstNode* decl = AstNodeDeclaration::make(
+        ident, nullptr, node, AstDeclarationKind::Constant, arena);
+
+    hash_map_insert_or_set(current_context, function->name, decl);
 }
 
 AstNode* sema_context_get_def_ptr(SemaContext* context,
@@ -45,14 +83,6 @@ void sema_context_push_context(SemaContext* context) {
 void sema_context_pop_context(SemaContext* context) {
     core_assert(context->defs.size > 0);
     context->defs.size -= 1;
-}
-
-void assign_type_set(AstNode* node, TypeSetHandle* type_set) {
-    core_assert(node);
-    core_assert(type_set);
-    core_assert(node->type_set == nullptr);
-    node->type_set = type_set;
-    array_push(&type_set->backreferences, &node->type_set);
 }
 
 void analyse_type(AstNode* node, Arena* arena) {
@@ -704,6 +734,13 @@ void semantic_analysis(AstFile* file, Arena* arena) {
     sema_context_init(&context, &sema_arena);
 
     sema_context_push_context(&context);
+
+    // Register built-in functions
+    Slice<BuiltinFunction> functions = builtin_functions(&sema_arena);
+    for (isize i = 0; i < functions.size; i++) {
+        sema_context_define_builtin(&context, &functions[i], arena);
+    }
+
     analyse_top_level_declarations(file, &context, arena);
 
     for (isize i = 0; i < file->ast.declarations.size; i++) {

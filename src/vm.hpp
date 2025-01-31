@@ -16,10 +16,15 @@ template <typename T> inline void stack_push(Stack* stack, T value) {
     stack->size += sizeof(T);
 }
 
-template <typename T> inline T* stack_pop(Stack* stack) {
+template <typename T> inline T stack_pop(Stack* stack) {
     core_assert(stack->size >= (isize)sizeof(T));
     stack->size -= sizeof(T);
-    return (T*)(stack->data + stack->size);
+    return *(T*)(stack->data + stack->size);
+}
+
+template <typename T> inline T* stack_peek(Stack* stack, isize offset = 0) {
+    core_assert(stack->size >= (isize)sizeof(T));
+    return (T*)(stack->data + stack->size - sizeof(T)) - offset;
 }
 
 inline void stack_push_size(Stack* stack, isize size) {

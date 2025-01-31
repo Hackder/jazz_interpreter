@@ -85,6 +85,10 @@ struct InstCall {
     isize fp;
 };
 
+struct InstCallBuiltin {
+    void* builtin;
+};
+
 struct InstReturn {};
 
 struct InstMov {
@@ -101,6 +105,11 @@ struct InstPopStack {
     isize size;
 };
 
+struct InstJumpIf {
+    MemPtr condition;
+    isize new_ip;
+};
+
 struct InstExit {
     u8 code;
 };
@@ -109,10 +118,12 @@ enum class InstType {
     BinaryOp,
     UnaryOp,
     Call,
+    CallBuiltin,
     Return,
     Mov,
     PushStack,
     PopStack,
+    JumpIf,
     Exit,
 };
 
@@ -122,10 +133,12 @@ struct Inst {
         InstBinaryOp binary;
         InstUnaryOp unary;
         InstCall call;
+        InstCallBuiltin call_builtin;
         InstReturn ret;
         InstMov mov;
         InstPushStack push_stack;
         InstPopStack pop_stack;
+        InstJumpIf jump_if;
         InstExit exit;
     };
 };
@@ -147,6 +160,11 @@ inline Inst inst_call(isize fp) {
     return Inst{.type = InstType::Call, .call = InstCall{.fp = fp}};
 }
 
+inline Inst inst_call_builtin(void* builtin) {
+    return Inst{.type = InstType::CallBuiltin,
+                .call_builtin = InstCallBuiltin{.builtin = builtin}};
+}
+
 inline Inst inst_return() { return Inst{.type = InstType::Return, .ret = {}}; }
 
 inline Inst inst_mov(MemPtr dest, MemPtr src, isize size) {
@@ -164,6 +182,12 @@ inline Inst inst_push_stack(isize size) {
 inline Inst inst_pop_stack(isize size) {
     core_assert(size >= 0);
     return Inst{.type = InstType::PopStack, .pop_stack = InstPopStack{size}};
+}
+
+inline Inst inst_jump_if(MemPtr condition, isize new_ip) {
+    return Inst{.type = InstType::JumpIf,
+                .jump_if =
+                    InstJumpIf{.condition = condition, .new_ip = new_ip}};
 }
 
 inline Inst inst_exit(u8 code) {
@@ -301,6 +325,10 @@ inline std::ostream& operator<<(std::ostream& os, const Inst& inst) {
         os << "Call(" << inst.call.fp << ")";
         break;
     }
+    case InstType::CallBuiltin: {
+        os << "CallBuiltin(" << inst.call_builtin.builtin << ")";
+        break;
+    }
     case InstType::Return: {
         os << "Return";
         break;
@@ -316,6 +344,11 @@ inline std::ostream& operator<<(std::ostream& os, const Inst& inst) {
     }
     case InstType::PopStack: {
         os << "PopStack(" << inst.pop_stack.size << ")";
+        break;
+    }
+    case InstType::JumpIf: {
+        os << "JumpIf(" << inst.jump_if.condition << " " << inst.jump_if.new_ip
+           << ")";
         break;
     }
     case InstType::Exit: {

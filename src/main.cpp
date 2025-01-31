@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
-            u8 exit_code = *stack_pop<u8>(&vm->stack);
+            u8 exit_code = stack_pop<u8>(&vm->stack);
             return exit_code;
         }
     }

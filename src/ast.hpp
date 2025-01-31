@@ -453,6 +453,7 @@ struct AstNodeFunction : public AstNode {
 
     // Used for compilation
     isize offset;
+    void* builtin;
 
     static AstNodeFunction* make(Array<AstNodeParameter*> parameters,
                                  AstNode* return_type, AstNodeBlock* body,
@@ -463,6 +464,7 @@ struct AstNodeFunction : public AstNode {
         node->return_type = return_type;
         node->body = body;
         node->offset = -1;
+        node->builtin = nullptr;
         node->token = token;
         return node;
     }

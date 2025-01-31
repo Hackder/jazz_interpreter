@@ -1,4 +1,5 @@
 #include "vm.hpp"
+#include "builtin.hpp"
 #include "bytecode.hpp"
 #include "core.hpp"
 
@@ -79,9 +80,9 @@ bool vm_execute_inst(VM* vm) {
         break;
     }
     case InstType::Return: {
-        vm->bp = *stack_pop<isize>(&vm->stack);
-        vm->ip = *stack_pop<isize>(&vm->stack);
-        vm->fp = *stack_pop<isize>(&vm->stack);
+        vm->bp = stack_pop<isize>(&vm->stack);
+        vm->ip = stack_pop<isize>(&vm->stack);
+        vm->fp = stack_pop<isize>(&vm->stack);
         break;
     }
     case InstType::Exit: {
@@ -101,6 +102,19 @@ bool vm_execute_inst(VM* vm) {
     }
     case InstType::PopStack: {
         stack_pop_size(&vm->stack, current_inst.pop_stack.size);
+        break;
+    }
+    case InstType::CallBuiltin: {
+        BuiltinFunctionPtr fn_ptr =
+            (BuiltinFunctionPtr)current_inst.call_builtin.builtin;
+        fn_ptr(vm);
+        break;
+    }
+    case InstType::JumpIf: {
+        bool condition = *vm_ptr_read<bool>(vm, current_inst.jump_if.condition);
+        if (condition == true) {
+            vm->ip = current_inst.jump_if.new_ip;
+        }
         break;
     }
     }

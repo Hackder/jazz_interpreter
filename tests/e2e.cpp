@@ -8,6 +8,34 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
+String read_file_full(FILE* file, Arena* arena) {
+    if (!file) {
+        std::cerr << "Error: Could not open file" << std::endl;
+        return {};
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        std::cerr << "Error: Could not seek file" << std::endl;
+        return {};
+    }
+    isize file_size = ftell(file);
+    if (file_size < 0) {
+        std::cerr << "Error: Could not get file size" << std::endl;
+        return {};
+    }
+    rewind(file);
+
+    char* buffer = arena_alloc<char>(arena, file_size + 1);
+    isize read_size = fread(buffer, 1, file_size, file);
+    if (read_size != file_size) {
+        std::cerr << "Error: Could not read file" << std::endl;
+        return {};
+    }
+    buffer[file_size] = '\0';
+
+    return string_from_cstr(buffer);
+}
+
 u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
                   FILE* stderr_file) {
     Arena arena;
@@ -73,7 +101,7 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
-            u8 exit_code = *stack_pop<u8>(&vm->stack);
+            u8 exit_code = stack_pop<u8>(&vm->stack);
             return exit_code;
         }
     }
@@ -140,7 +168,7 @@ Slice<u8> execute_function(const char* source_code_str, isize function_pointer,
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
-            u8 exit_code = *stack_pop<u8>(&vm->stack);
+            u8 exit_code = stack_pop<u8>(&vm->stack);
             core_assert(exit_code == 0);
 
             core_assert(vm->stack.size >= return_value_size);
@@ -363,5 +391,50 @@ TEST(e2e, ComplexIntBinaryExpression) {
     isize value = *slice_cast_raw<isize>(result);
     EXPECT_EQ(value, 255);
     EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, BuiltinPrintInt) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            std_println_int(42)
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("42\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleIfStatement) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            a := 42
+            if a == 42 {
+                std_println_int(42)
+            }
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("42\n"));
+
     EXPECT_EQ(ftell(stderr_file), 0);
 }
