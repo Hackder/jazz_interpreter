@@ -317,6 +317,12 @@ template <typename T> inline void array_push(Array<T>* array, T value) {
     array->size += 1;
 }
 
+template <typename T> inline T array_pop(Array<T>* array) {
+    core_assert_msg(array->size > 0, "array is empty");
+    array->size -= 1;
+    return array->data[array->size];
+}
+
 template <typename T>
 inline T array_remove_at_unordered(Array<T>* array, isize index) {
     core_assert_msg(index >= 0, "%ld < 0", index);

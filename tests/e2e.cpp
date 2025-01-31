@@ -125,6 +125,24 @@ TEST(e2e, Declaration) {
     EXPECT_EQ(ftell(stderr_file), 0);
 }
 
+TEST(e2e, SimpleReturn) {
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        other :: fn() {
+            return 1
+        }
+
+        main :: fn() {
+            other()
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
 TEST(e2e, SimpleAddition) {
     FILE* stdout_file = tmpfile();
     FILE* stderr_file = tmpfile();
@@ -133,6 +151,48 @@ TEST(e2e, SimpleAddition) {
 
         main :: fn() {
             a := 3 + 2
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleAdditionReturn) {
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        calc :: fn() {
+            a := 3 + 2
+
+            return a
+        }
+
+        main :: fn() {
+            a := calc()
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, ComplexIntBinaryExpression) {
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        thing :: 13
+
+        calc :: fn() {
+            a := 3 + 2 * (3 - 1) * 3 * (7 + 16 - 9 / (3 + 1))
+
+            return a
+        }
+
+        main :: fn() {
+            calc()
         }
     )SOURCE";
     u8 exit_code = execute_to_end(source, stdout_file, stderr_file);

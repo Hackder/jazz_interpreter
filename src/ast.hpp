@@ -270,7 +270,7 @@ struct AstNodeLiteral : public AstNode {
 
 struct AstNodeIdentifier : public AstNode {
     Token token;
-    AstNodeIdentifier* def;
+    AstNode* def;
 
     // Used for compilation
     MemPtr ptr;
@@ -451,6 +451,9 @@ struct AstNodeFunction : public AstNode {
     AstNode* return_type;
     AstNodeBlock* body;
 
+    // Used for compilation
+    isize offset;
+
     static AstNodeFunction* make(Array<AstNodeParameter*> parameters,
                                  AstNode* return_type, AstNodeBlock* body,
                                  Token token, Arena* arena) {
@@ -459,6 +462,7 @@ struct AstNodeFunction : public AstNode {
         node->parameters = parameters;
         node->return_type = return_type;
         node->body = body;
+        node->offset = -1;
         node->token = token;
         return node;
     }

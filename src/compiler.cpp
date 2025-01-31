@@ -10,6 +10,7 @@ struct CompilerContext {
     Array<u8> static_data;
     HashMap<String, isize> function_name_offset_map;
     isize stack_frame_size;
+    Array<MemPtr> return_ptrs;
 };
 
 template <typename T>
@@ -112,18 +113,38 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         Type* type = type_set_get_single(ident->type_set);
         Inst push = inst_push_stack(type->size);
         array_push(instructions, push);
-        Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
-                            ident->ptr, type->size);
-        array_push(instructions, mov);
         ctx->stack_frame_size += push.push_stack.size;
+
+        switch (ident->def->kind) {
+        case AstNodeKind::Declaration: {
+            AstNodeDeclaration* decl = ident->def->as_declaration();
+            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
+                                decl->name->ptr, type->size);
+            array_push(instructions, mov);
+            break;
+        }
+        case AstNodeKind::Parameter: {
+            AstNodeParameter* param = ident->def->as_parameter();
+            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
+                                param->name->ptr, type->size);
+            array_push(instructions, mov);
+            break;
+        }
+        default: {
+            core_assert(false);
+            break;
+        }
+        }
+
         break;
     }
     case AstNodeKind::Binary: {
         AstNodeBinary* binary = expression->as_binary();
-        Type* type = type_set_get_single(binary->type_set);
+
         isize before_left = ctx->stack_frame_size;
         Type* left_type = type_set_get_single(binary->left->type_set);
         compile_expression(ctx, binary->left, instructions);
+
         isize before_right = ctx->stack_frame_size;
         Type* right_type = type_set_get_single(binary->right->type_set);
         compile_expression(ctx, binary->right, instructions);
@@ -188,15 +209,73 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
                                         mem_ptr_stack_rel(before_right));
         array_push(instructions, binary_op);
 
-        isize delta = ctx->stack_frame_size - before_left + type->size;
-        Inst pop = inst_pop_stack(delta);
+        isize extra_stack_space_from_op_args =
+            ctx->stack_frame_size - before_left - right_type->size;
+
+        // NOTE(juraj): This doesn't handle the case, where the result
+        // is larger than the two operands combined. There is no way
+        // this can happen currently. But if you came across this in the
+        // future, there is no reason why this couldn't be implemented.
+        core_assert(extra_stack_space_from_op_args >= 0);
+
+        Inst pop = inst_pop_stack(extra_stack_space_from_op_args);
         array_push(instructions, pop);
-        ctx->stack_frame_size -= delta;
+        ctx->stack_frame_size -= extra_stack_space_from_op_args;
+
+        break;
+    }
+    case AstNodeKind::Call: {
+        AstNodeCall* call = expression->as_call();
+        AstNodeIdentifier* callee_ident = call->callee->as_identifier();
+        FunctionType* callee_type =
+            type_set_get_single(callee_ident->type_set)->as_function();
+
+        // Calling convension:
+        // 1. Push the stack by the size of the return value
+        // 2. Push the arguments on the stack
+        // 3. Call the function
+        // 4. Pop the arguments from the stack
+        // 5. Leave the return value on the stack
+
+        isize before_size = ctx->stack_frame_size;
+
+        Type* return_type = type_set_get_single(callee_type->return_type);
+        Inst push = inst_push_stack(return_type->size);
+        array_push(instructions, push);
+        ctx->stack_frame_size += return_type->size;
+
+        for (isize i = 0; i < call->arguments.size; i++) {
+            AstNode* arg = call->arguments[i];
+            compile_expression(ctx, arg, instructions);
+        }
+
+        switch (callee_ident->def->kind) {
+        case AstNodeKind::Declaration: {
+            AstNodeDeclaration* decl = callee_ident->def->as_declaration();
+            isize new_fp = decl->value->as_function()->offset;
+            Inst call_inst = inst_call(new_fp);
+            array_push(instructions, call_inst);
+            break;
+        }
+        case AstNodeKind::Parameter: {
+            core_assert_msg(false, "Function pointers are not yet implemented");
+            break;
+        }
+        default: {
+            core_assert(false);
+            break;
+        }
+        }
+
+        isize arguments_size =
+            ctx->stack_frame_size - before_size - return_type->size;
+        Inst pop = inst_pop_stack(arguments_size);
+        array_push(instructions, pop);
+        ctx->stack_frame_size -= arguments_size;
 
         break;
     }
     case AstNodeKind::Unary:
-    case AstNodeKind::Call:
     case AstNodeKind::If:
     case AstNodeKind::For:
     case AstNodeKind::Break:
@@ -220,12 +299,47 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
     case AstNodeKind::Identifier:
     case AstNodeKind::Binary:
     case AstNodeKind::Unary:
-    case AstNodeKind::Call:
     case AstNodeKind::If:
     case AstNodeKind::For:
     case AstNodeKind::Break:
-    case AstNodeKind::Continue:
-    case AstNodeKind::Return:
+    case AstNodeKind::Continue: {
+        // TODO
+        core_assert(false);
+        break;
+    }
+    case AstNodeKind::Call: {
+        compile_expression(ctx, statement, instructions);
+        // Pop the result of the call from the stack as we don't need it
+        Type* type = type_set_get_single(statement->type_set);
+        Inst pop = inst_pop_stack(type->size);
+        array_push(instructions, pop);
+        ctx->stack_frame_size -= type->size;
+        break;
+    }
+    case AstNodeKind::Return: {
+        AstNodeReturn* ret = statement->as_return();
+        if (ret->value) {
+            Type* type = type_set_get_single(ret->value->type_set);
+            isize before_size = ctx->stack_frame_size;
+
+            compile_expression(ctx, ret->value, instructions);
+            MemPtr current_return_ptr =
+                ctx->return_ptrs[ctx->return_ptrs.size - 1];
+
+            Inst mov = inst_mov(current_return_ptr,
+                                mem_ptr_stack_rel(before_size), type->size);
+            array_push(instructions, mov);
+        }
+
+        Inst pop = inst_pop_stack(ctx->stack_frame_size);
+        array_push(instructions, pop);
+        ctx->stack_frame_size = 0;
+
+        Inst ret_inst = inst_return();
+        array_push(instructions, ret_inst);
+
+        break;
+    }
     case AstNodeKind::Block: {
         compile_block(ctx, statement->as_block(), instructions);
         break;
@@ -234,10 +348,9 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         // We are declaring a variable on the stack
         AstNodeDeclaration* decl = statement->as_declaration();
         decl->name->ptr = mem_ptr_stack_rel(ctx->stack_frame_size);
-        // array_push(instructions, inst_push_stack(type->size));
 
-        // TODO(juraj): Evaluate the expression on the right, the
-        // result will be stored on the top of the stack
+        // NOTE(juraj): We don't need to push the stack here, as the
+        // result of the expression will be left on the top of the stack
         compile_expression(ctx, decl->value, instructions);
 
         break;
@@ -247,13 +360,19 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         AstNodeIdentifier* name = assign->name->as_identifier();
         Type* type = type_set_get_single(assign->name->type_set);
 
-        // Evaluate the expression on the right, the result will be stored
-        // on the top of the stack
+        // Evaluate the expression on the right, the result will be
+        // stored on the top of the stack
+        compile_expression(ctx, assign->value, instructions);
 
-        // Move the result from the top of the stack to the memory location
+        // Move the result from the top of the stack to the memory
+        // location
         Inst mov = inst_mov(name->ptr, mem_ptr_stack_rel(ctx->stack_frame_size),
                             type->size);
         array_push(instructions, mov);
+
+        // Pop the resulting value from the stack
+        Inst pop = inst_pop_stack(type->size);
+        array_push(instructions, pop);
 
         ctx->stack_frame_size -= type->size;
 
@@ -278,8 +397,9 @@ void compile_function(CompilerContext* ctx, AstNodeFunction* function,
                       isize function_offset) {
     Array<Inst> instructions = {};
     array_init(&instructions, 32, ctx->arena);
+    function->offset = function_offset;
 
-    isize offset = 0;
+    isize offset = -CALL_METADATA_SIZE;
     for (isize i = function->parameters.size - 1; i >= 0; i--) {
         AstNodeParameter* param = function->parameters[i];
         Type* type = type_set_get_single(param->type_set);
@@ -287,14 +407,23 @@ void compile_function(CompilerContext* ctx, AstNodeFunction* function,
         param->name->ptr = mem_ptr_stack_rel(offset);
     }
 
+    FunctionType* function_type =
+        type_set_get_single(function->type_set)->as_function();
+    Type* return_type = type_set_get_single(function_type->return_type);
+
+    isize return_value_offset = offset - return_type->size;
+    array_push(&ctx->return_ptrs, mem_ptr_stack_rel(return_value_offset));
+    defer(array_pop(&ctx->return_ptrs));
+
     ctx->stack_frame_size = 0;
 
     compile_block(ctx, function->body, &instructions);
 
-    Inst pop_stack = inst_pop_stack(ctx->stack_frame_size);
-    array_push(&instructions, pop_stack);
     if (instructions.size == 0 ||
         instructions[instructions.size - 1].type != InstType::Return) {
+        Inst pop_stack = inst_pop_stack(ctx->stack_frame_size);
+        array_push(&instructions, pop_stack);
+        ctx->stack_frame_size = 0;
         array_push(&instructions, inst_return());
     }
 
@@ -324,18 +453,22 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
     HashMap<String, isize> function_name_offset = {};
     hash_map_init(&function_name_offset, ast->declarations.size, arena);
 
+    Array<MemPtr> return_ptrs = {};
+    array_init(&return_ptrs, 1, arena);
+
     CompilerContext ctx = {
         .arena = arena,
         .functions = functions,
         .static_data = static_data,
         .function_name_offset_map = function_name_offset,
         .stack_frame_size = 0,
+        .return_ptrs = return_ptrs,
     };
 
     // Do a first pass, where we register all the functions and all the
-    // constants. This must be done, as we need to know the function offsets
-    // of other functions, when we generate the bytecode for any function.
-    // (and we support out of order definitions)
+    // constants. This must be done, as we need to know the function
+    // offsets of other functions, when we generate the bytecode for any
+    // function. (and we support out of order definitions)
     isize next_function_offset = 1;
     for (isize i = 0; i < ast->declarations.size; i++) {
         AstNode* node = ast->declarations[i];

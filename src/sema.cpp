@@ -3,7 +3,7 @@
 #include "core.hpp"
 
 struct SemaContext {
-    Array<HashMap<String, AstNodeIdentifier*>> defs;
+    Array<HashMap<String, AstNode*>> defs;
     bool is_for_expr;
     AstNodeFor* current_for;
     AstNodeFunction* current_function;
@@ -13,25 +13,21 @@ void sema_context_init(SemaContext* context, Arena* arena) {
     array_init(&context->defs, 5, arena);
 }
 
-AstNodeIdentifier* sema_context_define_value(SemaContext* context,
-                                             AstNode* ident) {
+void sema_context_define_value(SemaContext* context, AstNodeIdentifier* ident,
+                               AstNode* def) {
     core_assert(context->defs.size > 0);
-    HashMap<String, AstNodeIdentifier*>* current_context =
+    HashMap<String, AstNode*>* current_context =
         &context->defs[context->defs.size - 1];
 
-    AstNodeIdentifier* def = ident->as_identifier();
-    hash_map_insert_or_set(current_context, def->token.source, def);
-
-    return def;
+    hash_map_insert_or_set(current_context, ident->token.source, def);
 }
 
-AstNodeIdentifier* sema_context_get_def_ptr(SemaContext* context,
-                                            AstNode* ident) {
+AstNode* sema_context_get_def_ptr(SemaContext* context,
+                                  AstNodeIdentifier* ident) {
     String name = ident->as_identifier()->token.source;
     for (isize i = context->defs.size - 1; i >= 0; i--) {
-        HashMap<String, AstNodeIdentifier*>* current_context =
-            &context->defs[i];
-        AstNodeIdentifier** id = hash_map_get_ptr(current_context, name);
+        HashMap<String, AstNode*>* current_context = &context->defs[i];
+        AstNode** id = hash_map_get_ptr(current_context, name);
         if (id != nullptr) {
             return *id;
         }
@@ -41,7 +37,7 @@ AstNodeIdentifier* sema_context_get_def_ptr(SemaContext* context,
 }
 
 void sema_context_push_context(SemaContext* context) {
-    HashMap<String, AstNodeIdentifier*> new_context;
+    HashMap<String, AstNode*> new_context;
     hash_map_init(&new_context, 5, context->defs.arena);
     array_push(&context->defs, new_context);
 }
@@ -86,9 +82,9 @@ void analyse_top_level_declarations(AstFile* file, SemaContext* context,
         core_assert_msg(node->decl_kind == AstDeclarationKind::Constant,
                         "Only constants are supported at the top level");
 
-        AstNodeIdentifier* id = sema_context_get_def_ptr(context, node->name);
+        AstNode* decl = sema_context_get_def_ptr(context, node->name);
         // TODO(juraj): report errors to the user
-        core_assert(id == nullptr);
+        core_assert(decl == nullptr);
 
         if (node->type != nullptr) {
             analyse_type(node->type, arena);
@@ -98,7 +94,7 @@ void analyse_top_level_declarations(AstFile* file, SemaContext* context,
         }
         assign_type_set(node, type_set_make_with(Type::get_void(), arena));
 
-        sema_context_define_value(context, node->name);
+        sema_context_define_value(context, node->name, node);
     }
 }
 
@@ -153,14 +149,30 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         break;
     }
     case AstNodeKind::Identifier: {
-        AstNodeIdentifier* definition = sema_context_get_def_ptr(context, node);
-        if (definition == nullptr) {
+        AstNodeIdentifier* ident = node->as_identifier();
+        AstNode* def = sema_context_get_def_ptr(context, ident);
+        if (def == nullptr) {
             // TODO(juraj): report error to the user
             core_assert_msg(false, "Undefined identifier: %.*s",
                             node->as_identifier()->token.source.size,
                             node->as_identifier()->token.source.data);
         }
-        assign_type_set(node, definition->type_set);
+        ident->def = def;
+
+        switch (def->kind) {
+        case AstNodeKind::Declaration: {
+            assign_type_set(node, def->as_declaration()->name->type_set);
+            break;
+        }
+        case AstNodeKind::Parameter: {
+            assign_type_set(node, def->as_parameter()->name->type_set);
+            break;
+        }
+        default: {
+            core_assert(false);
+        }
+        }
+
         break;
     }
     case AstNodeKind::Binary: {
@@ -462,7 +474,8 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
         AstNodeFunction* func = node->as_function();
         sema_context_push_context(context);
         for (isize i = 0; i < func->parameters.size; i++) {
-            sema_context_define_value(context, func->parameters[i]->name);
+            sema_context_define_value(context, func->parameters[i]->name,
+                                      func->parameters[i]);
         }
 
         Array<TypeSetHandle*> parameters;
@@ -495,6 +508,15 @@ void analyse_expression(AstFile* file, SemaContext* context, AstNode* node,
 
         context->current_function = func;
         analyse_block(file, context, func->body, arena);
+
+        // NOTE(juraj): If the return type is not attached to any other type,
+        // assume it is void
+        if (func_type->return_type->backreferences.size == 1) {
+            FunctionType* func_type = type_set_get_function(func->type_set);
+            TypeKind kinds[] = {TypeKind::Void};
+            type_set_intersect_if_result_kinds(func_type->return_type, kinds);
+        }
+
         context->current_function = nullptr;
         sema_context_pop_context(context);
         break;
@@ -563,7 +585,7 @@ void analyse_statement(AstFile* file, SemaContext* context, AstNode* node,
         if (decl->value) {
             analyse_expression(file, context, decl->value, arena);
         }
-        sema_context_define_value(context, decl->name);
+        sema_context_define_value(context, decl->name, decl);
 
         if (decl->type) {
             analyse_type(decl->type, arena);

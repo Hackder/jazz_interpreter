@@ -79,6 +79,8 @@ struct InstUnaryOp {
     MemPtr operand;
 };
 
+const isize CALL_METADATA_SIZE = 3 * sizeof(isize);
+
 struct InstCall {
     isize fp;
 };
