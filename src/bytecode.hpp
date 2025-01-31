@@ -150,6 +150,8 @@ inline Inst inst_call(isize fp) {
 inline Inst inst_return() { return Inst{.type = InstType::Return, .ret = {}}; }
 
 inline Inst inst_mov(MemPtr dest, MemPtr src, isize size) {
+    core_assert(src.type != MemPtrType::Invalid);
+    core_assert(dest.type != MemPtrType::Invalid);
     return Inst{.type = InstType::Mov,
                 .mov = InstMov{.dest = dest, .src = src, .size = size}};
 }

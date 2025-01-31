@@ -283,6 +283,63 @@ TEST(e2e, SimpleAdditionReturn) {
     EXPECT_EQ(ftell(stderr_file), 0);
 }
 
+TEST(e2e, SimpleAdditionReturnUsingVariables) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        honkeytonk :: 3
+
+        calc :: fn() {
+            a := 3 + honkeytonk
+
+            return a
+        }
+
+        main :: fn() {
+            a := calc()
+        }
+    )SOURCE";
+    Slice<u8> result = execute_function(source, 1, sizeof(isize), stdout_file,
+                                        stderr_file, &arena);
+    isize value = *slice_cast_raw<isize>(result);
+    EXPECT_EQ(value, 6);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleAdditionReturnSelfAssignment) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        honkeytonk :: 3
+
+        calc :: fn() {
+            a := 3 + 2
+            a = a + honkeytonk
+
+            return a
+        }
+
+        main :: fn() {
+            a := calc()
+        }
+    )SOURCE";
+    Slice<u8> result = execute_function(source, 1, sizeof(isize), stdout_file,
+                                        stderr_file, &arena);
+    isize value = *slice_cast_raw<isize>(result);
+    EXPECT_EQ(value, 8);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
 TEST(e2e, ComplexIntBinaryExpression) {
     Arena arena;
     arena_init(&arena, 128 * 1024);

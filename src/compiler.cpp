@@ -3,7 +3,6 @@
 #include "bytecode.hpp"
 #include "core.hpp"
 #include "tokenizer.hpp"
-#include <iostream>
 
 struct CompilerContext {
     Arena* arena;
@@ -359,6 +358,24 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
     case AstNodeKind::Assignment: {
         AstNodeAssignment* assign = statement->as_assignment();
         AstNodeIdentifier* name = assign->name->as_identifier();
+        MemPtr def_ptr = {};
+        switch (name->def->kind) {
+        case AstNodeKind::Declaration: {
+            AstNodeDeclaration* decl = name->def->as_declaration();
+            def_ptr = decl->name->ptr;
+            break;
+        }
+        case AstNodeKind::Parameter: {
+            AstNodeParameter* param = name->def->as_parameter();
+            def_ptr = param->name->ptr;
+            break;
+        }
+        default: {
+            core_assert(false);
+            break;
+        }
+        }
+
         Type* type = type_set_get_single(assign->name->type_set);
 
         // Evaluate the expression on the right, the result will be
@@ -367,8 +384,9 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
 
         // Move the result from the top of the stack to the memory
         // location
-        Inst mov = inst_mov(name->ptr, mem_ptr_stack_rel(ctx->stack_frame_size),
-                            type->size);
+        Inst mov = inst_mov(
+            def_ptr, mem_ptr_stack_rel(ctx->stack_frame_size - type->size),
+            type->size);
         array_push(instructions, mov);
 
         // Pop the resulting value from the stack
@@ -480,6 +498,7 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
             i64 value = string_parse_to_i64(literal->token.source);
             isize offset = ctx_push_static_data(&ctx, value);
             literal->static_data_ptr = mem_ptr_static_data(offset);
+            name->ptr = mem_ptr_static_data(offset);
             break;
         }
         case TypeKind::Float: {
@@ -494,7 +513,6 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
         }
         case TypeKind::Bool: {
             // TODO(juraj): implement bool
-            core_assert(false);
             break;
         }
         case TypeKind::Function: {
@@ -516,22 +534,15 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
         AstNodeDeclaration* decl = node->as_declaration();
         AstNodeIdentifier* name = decl->name->as_identifier();
         AstNode* value = decl->value;
-        Type* type = type_set_get_single(value->type_set);
 
-        switch (type->kind) {
-        case TypeKind::Function: {
+        switch (value->kind) {
+        case AstNodeKind::Function: {
             isize function_offset = hash_map_must_get(
                 &ctx.function_name_offset_map, name->token.source);
             compile_function(&ctx, value->as_function(), function_offset);
+            break;
         }
-        case TypeKind::Integer:
-        case TypeKind::Float:
-        case TypeKind::String:
-        case TypeKind::Bool: {
-            continue;
-        }
-        case TypeKind::Void: {
-            core_assert(false);
+        default: {
             break;
         }
         }
