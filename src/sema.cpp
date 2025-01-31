@@ -20,6 +20,9 @@ struct SemaContext {
 
 void sema_context_init(SemaContext* context, Arena* arena) {
     array_init(&context->defs, 5, arena);
+    context->is_for_expr = false;
+    context->current_for = nullptr;
+    context->current_function = nullptr;
 }
 
 void sema_context_define_value(SemaContext* context, AstNodeIdentifier* ident,
@@ -730,7 +733,7 @@ void semantic_analysis(AstFile* file, Arena* arena) {
     arena_init(&sema_arena, 16 * 1024);
     defer(arena_free(&sema_arena));
 
-    SemaContext context;
+    SemaContext context = {};
     sema_context_init(&context, &sema_arena);
 
     sema_context_push_context(&context);
