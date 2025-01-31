@@ -22,8 +22,8 @@ TEST(VM, ExecuteInstruction) {
     Array<u8> static_data = {};
 
     CodeUnit code = {
-        .static_data = slice_from_array(&static_data),
-        .functions = slice_from_array(&functions),
+        .static_data = array_to_slice(&static_data),
+        .functions = array_to_slice(&functions),
     };
 
     VM* vm = vm_make(code, 1024, &arena);

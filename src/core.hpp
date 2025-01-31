@@ -252,6 +252,39 @@ template <> struct std::hash<String> {
 };
 
 /// ------------------
+/// Slice
+/// ------------------
+
+template <typename T> struct Slice {
+    T* data;
+    isize size;
+
+    T& operator[](isize index) {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+
+    const T& operator[](isize index) const {
+        core_assert(index >= 0);
+        core_assert(index < this->size);
+        return data[index];
+    }
+};
+
+template <typename T, isize N>
+inline Slice<T> slice_from_inline_alloc(const T (&data)[N], Arena* arena) {
+    T* new_data = arena_alloc<T>(arena, N);
+    memcpy(new_data, data, sizeof(T) * N);
+    return Slice<T>{new_data, N};
+}
+
+template <typename R> inline R* slice_cast_raw(Slice<u8> slice) {
+    core_assert(slice.size == sizeof(R));
+    return (R*)slice.data;
+}
+
+/// ------------------
 /// Array
 /// ------------------
 
@@ -350,36 +383,31 @@ inline void array_clone_to(Array<T>* source, Array<T>* dest, Arena* arena) {
     }
 }
 
-/// ------------------
-/// Slice
-/// ------------------
-
-template <typename T> struct Slice {
-    T* data;
-    isize size;
-
-    T& operator[](isize index) {
-        core_assert(index >= 0);
-        core_assert(index < this->size);
-        return data[index];
-    }
-
-    const T& operator[](isize index) const {
-        core_assert(index >= 0);
-        core_assert(index < this->size);
-        return data[index];
-    }
-};
-
-template <typename T, isize N>
-inline Slice<T> slice_from_inline_alloc(const T (&data)[N], Arena* arena) {
-    T* new_data = arena_alloc<T>(arena, N);
-    memcpy(new_data, data, sizeof(T) * N);
-    return Slice<T>{new_data, N};
+template <typename T> inline Slice<T> array_to_slice(Array<T>* array) {
+    return Slice<T>{array->data, array->size};
 }
 
-template <typename T> inline Slice<T> slice_from_array(Array<T>* array) {
-    return Slice<T>{array->data, array->size};
+template <typename T>
+inline Slice<T> array_slice(Array<T>* array, isize start, isize count) {
+    core_assert_msg(start >= 0, "%ld < 0", start);
+    core_assert_msg(start + count <= array->size, "%ld + %ld > %ld", start,
+                    count, array->size);
+
+    return Slice<T>{array->data + start, count};
+}
+
+template <typename T>
+inline void array_insert(Array<T>* array, isize index, T value) {
+    core_assert_msg(index >= 0, "%ld < 0", index);
+    core_assert_msg(index <= array->size, "%ld > %ld", index, array->size);
+
+    array_push(array, value);
+
+    for (isize i = array->size - 1; i > index; i--) {
+        array->data[i] = array->data[i - 1];
+    }
+
+    array->data[index] = value;
 }
 
 /// ------------------

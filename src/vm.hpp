@@ -140,10 +140,12 @@ inline u8* vm_ptr_to_raw(VM* vm, MemPtr ptr) {
     }
     case MemPtrType::StackAbs: {
         core_assert(ptr.mem_offset <= vm->stack.size);
+        core_assert(ptr.mem_offset >= 0);
         return vm->stack.data + ptr.mem_offset;
     }
     case MemPtrType::StackRel: {
         core_assert(vm->bp + ptr.mem_offset <= vm->stack.size);
+        core_assert(vm->bp + ptr.mem_offset >= 0);
         return vm->stack.data + vm->bp + ptr.mem_offset;
     }
     case MemPtrType::Heap: {
@@ -153,6 +155,7 @@ inline u8* vm_ptr_to_raw(VM* vm, MemPtr ptr) {
     }
     case MemPtrType::StaticData: {
         core_assert(ptr.mem_offset <= vm->code.static_data.size);
+        core_assert(ptr.mem_offset >= 0);
         return vm->code.static_data.data + ptr.mem_offset;
     }
     }

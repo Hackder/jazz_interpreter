@@ -3,6 +3,7 @@
 #include "bytecode.hpp"
 #include "core.hpp"
 #include "tokenizer.hpp"
+#include <iostream>
 
 struct CompilerContext {
     Arena* arena;
@@ -68,6 +69,18 @@ bool string_parse_to_bool(String str) {
     }
 }
 
+void push_stack(CompilerContext* ctx, isize size, Array<Inst>* instructions) {
+    Inst push = inst_push_stack(size);
+    array_push(instructions, push);
+    ctx->stack_frame_size += size;
+}
+
+void pop_stack(CompilerContext* ctx, isize size, Array<Inst>* instructions) {
+    Inst pop = inst_pop_stack(size);
+    array_push(instructions, pop);
+    ctx->stack_frame_size -= size;
+}
+
 void compile_block(CompilerContext* ctx, AstNodeBlock* block,
                    Array<Inst>* instructions);
 
@@ -82,12 +95,11 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
             i64 value = string_parse_to_i64(literal->token.source);
             isize offset = ctx_push_static_data(ctx, value);
             core_assert(type->size == sizeof(i64));
-            Inst push = inst_push_stack(type->size);
-            array_push(instructions, push);
-            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
-                                mem_ptr_static_data(offset), type->size);
+            push_stack(ctx, type->size, instructions);
+            Inst mov =
+                inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size - type->size),
+                         mem_ptr_static_data(offset), type->size);
             array_push(instructions, mov);
-            ctx->stack_frame_size += push.push_stack.size;
             break;
         }
         case AstLiteralKind::Float:
@@ -97,12 +109,11 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
             bool value = string_parse_to_bool(literal->token.source);
             isize offset = ctx_push_static_data(ctx, value);
             core_assert(type->size == sizeof(bool));
-            Inst push = inst_push_stack(type->size);
-            array_push(instructions, push);
-            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
-                                mem_ptr_static_data(offset), type->size);
+            push_stack(ctx, type->size, instructions);
+            Inst mov =
+                inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size - type->size),
+                         mem_ptr_static_data(offset), type->size);
             array_push(instructions, mov);
-            ctx->stack_frame_size += push.push_stack.size;
             break;
         }
         }
@@ -111,22 +122,22 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
     case AstNodeKind::Identifier: {
         AstNodeIdentifier* ident = expression->as_identifier();
         Type* type = type_set_get_single(ident->type_set);
-        Inst push = inst_push_stack(type->size);
-        array_push(instructions, push);
-        ctx->stack_frame_size += push.push_stack.size;
+        push_stack(ctx, type->size, instructions);
 
         switch (ident->def->kind) {
         case AstNodeKind::Declaration: {
             AstNodeDeclaration* decl = ident->def->as_declaration();
-            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
-                                decl->name->ptr, type->size);
+            Inst mov =
+                inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size - type->size),
+                         decl->name->ptr, type->size);
             array_push(instructions, mov);
             break;
         }
         case AstNodeKind::Parameter: {
             AstNodeParameter* param = ident->def->as_parameter();
-            Inst mov = inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size),
-                                param->name->ptr, type->size);
+            Inst mov =
+                inst_mov(mem_ptr_stack_rel(ctx->stack_frame_size - type->size),
+                         param->name->ptr, type->size);
             array_push(instructions, mov);
             break;
         }
@@ -218,9 +229,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         // future, there is no reason why this couldn't be implemented.
         core_assert(extra_stack_space_from_op_args >= 0);
 
-        Inst pop = inst_pop_stack(extra_stack_space_from_op_args);
-        array_push(instructions, pop);
-        ctx->stack_frame_size -= extra_stack_space_from_op_args;
+        pop_stack(ctx, right_type->size, instructions);
 
         break;
     }
@@ -240,9 +249,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         isize before_size = ctx->stack_frame_size;
 
         Type* return_type = type_set_get_single(callee_type->return_type);
-        Inst push = inst_push_stack(return_type->size);
-        array_push(instructions, push);
-        ctx->stack_frame_size += return_type->size;
+        push_stack(ctx, return_type->size, instructions);
 
         for (isize i = 0; i < call->arguments.size; i++) {
             AstNode* arg = call->arguments[i];
@@ -269,9 +276,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
 
         isize arguments_size =
             ctx->stack_frame_size - before_size - return_type->size;
-        Inst pop = inst_pop_stack(arguments_size);
-        array_push(instructions, pop);
-        ctx->stack_frame_size -= arguments_size;
+        pop_stack(ctx, arguments_size, instructions);
 
         break;
     }
@@ -311,9 +316,7 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         compile_expression(ctx, statement, instructions);
         // Pop the result of the call from the stack as we don't need it
         Type* type = type_set_get_single(statement->type_set);
-        Inst pop = inst_pop_stack(type->size);
-        array_push(instructions, pop);
-        ctx->stack_frame_size -= type->size;
+        pop_stack(ctx, type->size, instructions);
         break;
     }
     case AstNodeKind::Return: {
@@ -331,9 +334,7 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
             array_push(instructions, mov);
         }
 
-        Inst pop = inst_pop_stack(ctx->stack_frame_size);
-        array_push(instructions, pop);
-        ctx->stack_frame_size = 0;
+        pop_stack(ctx, ctx->stack_frame_size, instructions);
 
         Inst ret_inst = inst_return();
         array_push(instructions, ret_inst);
@@ -371,10 +372,7 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         array_push(instructions, mov);
 
         // Pop the resulting value from the stack
-        Inst pop = inst_pop_stack(type->size);
-        array_push(instructions, pop);
-
-        ctx->stack_frame_size -= type->size;
+        pop_stack(ctx, type->size, instructions);
 
         break;
     }
@@ -421,13 +419,11 @@ void compile_function(CompilerContext* ctx, AstNodeFunction* function,
 
     if (instructions.size == 0 ||
         instructions[instructions.size - 1].type != InstType::Return) {
-        Inst pop_stack = inst_pop_stack(ctx->stack_frame_size);
-        array_push(&instructions, pop_stack);
-        ctx->stack_frame_size = 0;
+        pop_stack(ctx, ctx->stack_frame_size, &instructions);
         array_push(&instructions, inst_return());
     }
 
-    ctx->functions[function_offset] = slice_from_array(&instructions);
+    ctx->functions[function_offset] = array_to_slice(&instructions);
 }
 
 void add_init_function(CompilerContext* ctx) {
@@ -544,8 +540,8 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
     add_init_function(&ctx);
 
     CodeUnit code = {
-        .static_data = slice_from_array(&ctx.static_data),
-        .functions = slice_from_array(&ctx.functions),
+        .static_data = array_to_slice(&ctx.static_data),
+        .functions = array_to_slice(&ctx.functions),
     };
 
     return code;
