@@ -150,6 +150,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
     }
     case AstNodeKind::Binary: {
         AstNodeBinary* binary = expression->as_binary();
+        Type* type = type_set_get_single(binary->type_set);
 
         isize before_left = ctx->stack_frame_size;
         Type* left_type = type_set_get_single(binary->left->type_set);
@@ -197,6 +198,22 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
                 op = BinOperand::Int_NotEqual;
                 break;
             }
+            case TokenKind::LessThan: {
+                op = BinOperand::Int_LessThan;
+                break;
+            }
+            case TokenKind::LessEqual: {
+                op = BinOperand::Int_LessEqual;
+                break;
+            }
+            case TokenKind::GreaterThan: {
+                op = BinOperand::Int_GreaterThan;
+                break;
+            }
+            case TokenKind::GreaterEqual: {
+                op = BinOperand::Int_GreaterEqual;
+                break;
+            }
             default: {
                 core_assert(false);
                 break;
@@ -220,7 +237,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         array_push(instructions, binary_op);
 
         isize extra_stack_space_from_op_args =
-            ctx->stack_frame_size - before_left - right_type->size;
+            left_type->size + right_type->size - type->size;
 
         // NOTE(juraj): This doesn't handle the case, where the result
         // is larger than the two operands combined. There is no way
@@ -228,7 +245,7 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         // future, there is no reason why this couldn't be implemented.
         core_assert(extra_stack_space_from_op_args >= 0);
 
-        pop_stack(ctx, right_type->size, instructions);
+        pop_stack(ctx, extra_stack_space_from_op_args, instructions);
 
         break;
     }
@@ -309,12 +326,80 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
     case AstNodeKind::Identifier:
     case AstNodeKind::Binary:
     case AstNodeKind::Unary:
-    case AstNodeKind::If:
-    case AstNodeKind::For:
     case AstNodeKind::Break:
     case AstNodeKind::Continue: {
         // TODO
         core_assert(false);
+        break;
+    }
+    case AstNodeKind::For: {
+        AstNodeFor* for_node = statement->as_for();
+        compile_statement(ctx, for_node->init, instructions);
+
+        isize for_condition_ip = instructions->size;
+
+        compile_expression(ctx, for_node->condition, instructions);
+
+        Array<Inst> for_body_instructions;
+        array_init(&for_body_instructions, 2, ctx->arena);
+        compile_block(ctx, for_node->then_branch->as_block(),
+                      &for_body_instructions);
+
+        compile_statement(ctx, for_node->update, &for_body_instructions);
+        Inst jmp_to_condition = inst_jump(for_condition_ip);
+        array_push(&for_body_instructions, jmp_to_condition);
+
+        isize for_end_ip = instructions->size + for_body_instructions.size;
+
+        Inst jmp_to_end = inst_jump_if_not(
+            mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
+            for_end_ip);
+        array_push(instructions, jmp_to_end);
+        pop_stack(ctx, sizeof(bool), instructions);
+
+        array_push_from_slice(instructions,
+                              array_to_slice(&for_body_instructions));
+
+        pop_stack(ctx, sizeof(bool), instructions);
+
+        break;
+    }
+    case AstNodeKind::If: {
+        AstNodeIf* if_node = statement->as_if();
+        compile_expression(ctx, if_node->condition, instructions);
+
+        Array<Inst> then_instructions;
+        array_init(&then_instructions, 2, ctx->arena);
+        compile_block(ctx, if_node->then_branch->as_block(),
+                      &then_instructions);
+
+        isize if_false_ip = instructions->size + then_instructions.size + 1;
+        if (if_node->else_branch != nullptr) {
+            // If there is an else branch, we need to jump over it
+            // if the condition is false
+            if_false_ip += 1;
+        }
+
+        core_assert(ctx->stack_frame_size >= (isize)sizeof(bool));
+        Inst jmp = inst_jump_if_not(
+            mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
+            if_false_ip);
+        array_push(instructions, jmp);
+        array_push_from_slice(instructions, array_to_slice(&then_instructions));
+
+        if (if_node->else_branch != nullptr) {
+            Array<Inst> else_instructions;
+            array_init(&else_instructions, 2, ctx->arena);
+            compile_block(ctx, if_node->else_branch->as_block(),
+                          &else_instructions);
+
+            Inst jmp_else = inst_jump(if_false_ip + else_instructions.size);
+            array_push(instructions, jmp_else);
+
+            array_push_from_slice(instructions,
+                                  array_to_slice(&else_instructions));
+        }
+
         break;
     }
     case AstNodeKind::Call: {
@@ -339,7 +424,12 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
             array_push(instructions, mov);
         }
 
-        pop_stack(ctx, ctx->stack_frame_size, instructions);
+        // Here we do not call `pop_stack` as we don't want to change the
+        // stack frame size, as we are returning from the function. This
+        // would break if there return was in an if statement or something
+        // similar, where it may or may not run
+        Inst pop_inst = inst_pop_stack(ctx->stack_frame_size);
+        array_push(instructions, pop_inst);
 
         Inst ret_inst = inst_return();
         array_push(instructions, ret_inst);
@@ -410,8 +500,16 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
 
 void compile_block(CompilerContext* ctx, AstNodeBlock* block,
                    Array<Inst>* instructions) {
+    isize before_size = ctx->stack_frame_size;
+
     for (isize i = 0; i < block->statements.size; i++) {
         compile_statement(ctx, block->statements[i], instructions);
+    }
+
+    isize after_size = ctx->stack_frame_size;
+    if (before_size != after_size) {
+        core_assert(after_size > before_size);
+        pop_stack(ctx, after_size - before_size, instructions);
     }
 }
 

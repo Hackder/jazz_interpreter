@@ -40,6 +40,10 @@ enum class BinOperand {
     Int_BinaryOr,
     Int_Equal,
     Int_NotEqual,
+    Int_LessThan,
+    Int_LessEqual,
+    Int_GreaterThan,
+    Int_GreaterEqual,
 
     // Float
     Float_Add,
@@ -48,14 +52,12 @@ enum class BinOperand {
     Float_Div,
     Float_Equal,
     Float_NotEqual,
+    Float_LessThan,
+    Float_LessEqual,
+    Float_GreaterThan,
+    Float_GreaterEqual,
 
     // Bool
-    Bool_LessThan,
-    Bool_LessEqual,
-    Bool_GreaterThan,
-    Bool_GreaterEqual,
-    Bool_LogicalAnd,
-    Bool_LogicalOr,
     Bool_Equal,
     Bool_NotEqual,
 };
@@ -108,6 +110,11 @@ struct InstPopStack {
 struct InstJumpIf {
     MemPtr condition;
     isize new_ip;
+    bool expected;
+};
+
+struct InstJump {
+    isize new_ip;
 };
 
 struct InstExit {
@@ -124,6 +131,7 @@ enum class InstType {
     PushStack,
     PopStack,
     JumpIf,
+    Jump,
     Exit,
 };
 
@@ -139,6 +147,7 @@ struct Inst {
         InstPushStack push_stack;
         InstPopStack pop_stack;
         InstJumpIf jump_if;
+        InstJump jump;
         InstExit exit;
     };
 };
@@ -186,8 +195,20 @@ inline Inst inst_pop_stack(isize size) {
 
 inline Inst inst_jump_if(MemPtr condition, isize new_ip) {
     return Inst{.type = InstType::JumpIf,
-                .jump_if =
-                    InstJumpIf{.condition = condition, .new_ip = new_ip}};
+                .jump_if = InstJumpIf{.condition = condition,
+                                      .new_ip = new_ip,
+                                      .expected = true}};
+}
+
+inline Inst inst_jump_if_not(MemPtr condition, isize new_ip) {
+    return Inst{.type = InstType::JumpIf,
+                .jump_if = InstJumpIf{.condition = condition,
+                                      .new_ip = new_ip,
+                                      .expected = false}};
+}
+
+inline Inst inst_jump(isize new_ip) {
+    return Inst{.type = InstType::Jump, .jump = InstJump{.new_ip = new_ip}};
 }
 
 inline Inst inst_exit(u8 code) {
@@ -248,6 +269,18 @@ inline std::ostream& operator<<(std::ostream& os, const BinOperand& op) {
     case BinOperand::Int_NotEqual:
         os << "Int_NotEqual";
         break;
+    case BinOperand::Int_LessThan:
+        os << "Int_LessThan";
+        break;
+    case BinOperand::Int_LessEqual:
+        os << "Int_LessEqual";
+        break;
+    case BinOperand::Int_GreaterThan:
+        os << "Int_GreaterThan";
+        break;
+    case BinOperand::Int_GreaterEqual:
+        os << "Int_GreaterEqual";
+        break;
     case BinOperand::Float_Add:
         os << "Float_Add";
         break;
@@ -266,23 +299,17 @@ inline std::ostream& operator<<(std::ostream& os, const BinOperand& op) {
     case BinOperand::Float_NotEqual:
         os << "Float_NotEqual";
         break;
-    case BinOperand::Bool_LessThan:
-        os << "Bool_LessThan";
+    case BinOperand::Float_LessThan:
+        os << "Float_LessThan";
         break;
-    case BinOperand::Bool_LessEqual:
-        os << "Bool_LessEqual";
+    case BinOperand::Float_LessEqual:
+        os << "Float_LessEqual";
         break;
-    case BinOperand::Bool_GreaterThan:
-        os << "Bool_GreaterThan";
+    case BinOperand::Float_GreaterThan:
+        os << "Float_GreaterThan";
         break;
-    case BinOperand::Bool_GreaterEqual:
-        os << "Bool_GreaterEqual";
-        break;
-    case BinOperand::Bool_LogicalAnd:
-        os << "Bool_LogicalAnd";
-        break;
-    case BinOperand::Bool_LogicalOr:
-        os << "Bool_LogicalOr";
+    case BinOperand::Float_GreaterEqual:
+        os << "Float_GreaterEqual";
         break;
     case BinOperand::Bool_Equal:
         os << "Bool_Equal";
@@ -348,7 +375,11 @@ inline std::ostream& operator<<(std::ostream& os, const Inst& inst) {
     }
     case InstType::JumpIf: {
         os << "JumpIf(" << inst.jump_if.condition << " " << inst.jump_if.new_ip
-           << ")";
+           << " " << inst.jump_if.expected << ")";
+        break;
+    }
+    case InstType::Jump: {
+        os << "Jump(" << inst.jump.new_ip << ")";
         break;
     }
     case InstType::Exit: {

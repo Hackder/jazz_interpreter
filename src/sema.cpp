@@ -736,7 +736,7 @@ void semantic_analysis(AstFile* file, Arena* arena) {
     sema_context_push_context(&context);
 
     // Register built-in functions
-    Slice<BuiltinFunction> functions = builtin_functions(&sema_arena);
+    Slice<BuiltinFunction> functions = builtin_functions(arena);
     for (isize i = 0; i < functions.size; i++) {
         sema_context_define_builtin(&context, &functions[i], arena);
     }

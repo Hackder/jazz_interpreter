@@ -51,6 +51,10 @@ bool vm_execute_inst(VM* vm) {
             CASE_BINARY_OP(Int_BinaryOr, i64, |)
             CASE_BINARY_OP(Int_Equal, i64, ==)
             CASE_BINARY_OP(Int_NotEqual, i64, !=)
+            CASE_BINARY_OP(Int_LessThan, i64, <)
+            CASE_BINARY_OP(Int_LessEqual, i64, <=)
+            CASE_BINARY_OP(Int_GreaterThan, i64, >)
+            CASE_BINARY_OP(Int_GreaterEqual, i64, >=)
 
             CASE_BINARY_OP(Float_Add, f64, +)
             CASE_BINARY_OP(Float_Sub, f64, -)
@@ -58,13 +62,11 @@ bool vm_execute_inst(VM* vm) {
             CASE_BINARY_OP(Float_Div, f64, /)
             CASE_BINARY_OP(Float_Equal, f64, ==)
             CASE_BINARY_OP(Float_NotEqual, f64, !=)
+            CASE_BINARY_OP(Float_LessThan, f64, <)
+            CASE_BINARY_OP(Float_LessEqual, f64, <=)
+            CASE_BINARY_OP(Float_GreaterThan, f64, >)
+            CASE_BINARY_OP(Float_GreaterEqual, f64, >=)
 
-            CASE_BINARY_OP(Bool_LessThan, bool, <)
-            CASE_BINARY_OP(Bool_LessEqual, bool, <=)
-            CASE_BINARY_OP(Bool_GreaterThan, bool, >)
-            CASE_BINARY_OP(Bool_GreaterEqual, bool, >=)
-            CASE_BINARY_OP(Bool_LogicalAnd, bool, &&)
-            CASE_BINARY_OP(Bool_LogicalOr, bool, ||)
             CASE_BINARY_OP(Bool_Equal, bool, ==)
             CASE_BINARY_OP(Bool_NotEqual, bool, !=)
         }
@@ -112,9 +114,13 @@ bool vm_execute_inst(VM* vm) {
     }
     case InstType::JumpIf: {
         bool condition = *vm_ptr_read<bool>(vm, current_inst.jump_if.condition);
-        if (condition == true) {
+        if (condition == current_inst.jump_if.expected) {
             vm->ip = current_inst.jump_if.new_ip;
         }
+        break;
+    }
+    case InstType::Jump: {
+        vm->ip = current_inst.jump.new_ip;
         break;
     }
     }

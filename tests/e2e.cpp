@@ -80,7 +80,7 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     for (isize i = 0; i < code_unit.functions.size; i++) {
         Slice<Inst> function = code_unit.functions[i];
         for (isize j = 0; j < function.size; j++) {
-            std::cerr << function[j] << std::endl;
+            std::cerr << j << ": " << function[j] << std::endl;
         }
         std::cerr << std::endl;
     }
@@ -428,13 +428,158 @@ TEST(e2e, SimpleIfStatement) {
             if a == 42 {
                 std_println_int(42)
             }
+            std_println_int(11)
         }
     )SOURCE";
     u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
     EXPECT_EQ(exit_code, 0);
 
     String output = read_file_full(stdout_file, &arena);
-    EXPECT_EQ(output, string_from_cstr("42\n"));
+    EXPECT_EQ(output, string_from_cstr("42\n11\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleIfElseStatement) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            a := 42
+            if a == 42 {
+                std_println_int(42)
+            } else {
+                std_println_int(11)
+            }
+
+            if a != 42 {
+                std_println_int(42)
+            } else {
+                std_println_int(11)
+            }
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("42\n11\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleRecursion) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        rec :: fn(n) {
+            if n == 0 {
+                return 0
+            }
+            return rec(n - 1)
+        }
+
+        main :: fn() {
+            std_println_int(rec(3))
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("0\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, Fibonacci) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        fib :: fn(n: int) -> int {
+            if n < 2 {
+                return n
+            }
+
+            return fib(n - 1) + fib(n - 2)
+        }
+
+        main :: fn() {
+            std_println_int(fib(10))
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("55\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, Fibonacci2) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        fib :: fn(n: int) -> int {
+            if n < 2 {
+                return n
+            }
+
+            return fib(n - 1) + fib(n - 2)
+        }
+
+        main :: fn() {
+            std_println_int(fib(1))
+            std_println_int(fib(2))
+            std_println_int(fib(3))
+            std_println_int(fib(4))
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("1\n1\n2\n3\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, SimpleForLoop) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            for i := 0; i < 10; i = i + 1 {
+                std_println_int(i)
+            }
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"));
 
     EXPECT_EQ(ftell(stderr_file), 0);
 }

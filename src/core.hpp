@@ -350,6 +350,13 @@ template <typename T> inline void array_push(Array<T>* array, T value) {
     array->size += 1;
 }
 
+template <typename T>
+inline void array_push_from_slice(Array<T>* array, Slice<T> slice) {
+    for (isize i = 0; i < slice.size; i++) {
+        array_push(array, slice[i]);
+    }
+}
+
 template <typename T> inline T array_pop(Array<T>* array) {
     core_assert_msg(array->size > 0, "array is empty");
     array->size -= 1;
