@@ -5,6 +5,9 @@
 #include "vm.hpp"
 
 void std_println_int(VM* vm);
+void std_print_int(VM* vm);
+void std_print_space(VM* vm);
+void std_print_newline(VM* vm);
 
 using BuiltinFunctionPtr = void (*)(VM*);
 

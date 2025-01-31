@@ -113,6 +113,9 @@ bool vm_execute_inst(VM* vm) {
         break;
     }
     case InstType::JumpIf: {
+        core_assert(current_inst.jump_if.new_ip >= 0);
+        core_assert(current_inst.jump_if.new_ip <
+                    vm->code.functions[vm->fp].size);
         bool condition = *vm_ptr_read<bool>(vm, current_inst.jump_if.condition);
         if (condition == current_inst.jump_if.expected) {
             vm->ip = current_inst.jump_if.new_ip;
@@ -120,6 +123,8 @@ bool vm_execute_inst(VM* vm) {
         break;
     }
     case InstType::Jump: {
+        core_assert(current_inst.jump.new_ip >= 0);
+        core_assert(current_inst.jump.new_ip < vm->code.functions[vm->fp].size);
         vm->ip = current_inst.jump.new_ip;
         break;
     }

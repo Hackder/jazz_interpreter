@@ -77,6 +77,7 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     semantic_analysis(file, &arena);
     CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
 
+    // NOTE(juraj): Uncomment this to see the compiled bytecode for each test
     for (isize i = 0; i < code_unit.functions.size; i++) {
         Slice<Inst> function = code_unit.functions[i];
         for (isize j = 0; j < function.size; j++) {
@@ -98,6 +99,8 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     vm->stderr = stderr_file;
     while (true) {
         Inst inst = vm->code.functions[vm->fp][vm->ip];
+        // std::cerr << "Stack size: " << vm->stack.size << std::endl;
+        // std::cerr << inst << std::endl;
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
@@ -153,13 +156,14 @@ Slice<u8> execute_function(const char* source_code_str, isize function_pointer,
 
     code_unit.functions[0] = array_to_slice(&init_function);
 
-    for (isize i = 0; i < code_unit.functions.size; i++) {
-        Slice<Inst> function = code_unit.functions[i];
-        for (isize j = 0; j < function.size; j++) {
-            std::cerr << function[j] << std::endl;
-        }
-        std::cerr << std::endl;
-    }
+    // NOTE(juraj): Uncomment this to see the compiled bytecode for each test
+    // for (isize i = 0; i < code_unit.functions.size; i++) {
+    //     Slice<Inst> function = code_unit.functions[i];
+    //     for (isize j = 0; j < function.size; j++) {
+    //         std::cerr << function[j] << std::endl;
+    //     }
+    //     std::cerr << std::endl;
+    // }
 
     VM* vm = vm_make(code_unit, 8 * 1024 * 1024, arena);
     vm->stdout = stdout_file;
@@ -580,6 +584,33 @@ TEST(e2e, SimpleForLoop) {
 
     String output = read_file_full(stdout_file, &arena);
     EXPECT_EQ(output, string_from_cstr("0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
+TEST(e2e, NextedLoops) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            for col := 0; col < 3; col = col + 1 {
+                if col > 1 {
+                    std_println_int(col)
+                }
+            }
+
+            std_print_newline()
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("0 1 2 \n0 1 2 \n0 1 2 \n\n"));
 
     EXPECT_EQ(ftell(stderr_file), 0);
 }

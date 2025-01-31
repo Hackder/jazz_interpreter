@@ -333,12 +333,17 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         break;
     }
     case AstNodeKind::For: {
+        isize before_size = ctx->stack_frame_size;
         AstNodeFor* for_node = statement->as_for();
         compile_statement(ctx, for_node->init, instructions);
 
         isize for_condition_ip = instructions->size;
 
         compile_expression(ctx, for_node->condition, instructions);
+
+        // Fake pop the result of the condition to allow the body to compile
+        // normaly
+        ctx->stack_frame_size -= sizeof(bool);
 
         Array<Inst> for_body_instructions;
         array_init(&for_body_instructions, 2, ctx->arena);
@@ -349,7 +354,10 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         Inst jmp_to_condition = inst_jump(for_condition_ip);
         array_push(&for_body_instructions, jmp_to_condition);
 
-        isize for_end_ip = instructions->size + for_body_instructions.size;
+        // Push the condition result back on the stack
+        ctx->stack_frame_size += sizeof(bool);
+
+        isize for_end_ip = instructions->size + for_body_instructions.size + 2;
 
         Inst jmp_to_end = inst_jump_if_not(
             mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
@@ -360,45 +368,69 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         array_push_from_slice(instructions,
                               array_to_slice(&for_body_instructions));
 
+        // We add back the condition result, because this part of the
+        // code will run if the jump fails, therefore the first
+        // pop_stack will not be executed
+        ctx->stack_frame_size += sizeof(bool);
         pop_stack(ctx, sizeof(bool), instructions);
+
+        // Finally we pop the variables created in the `init` part
+        // of the for loop
+        core_assert(ctx->stack_frame_size >= before_size);
+        pop_stack(ctx, ctx->stack_frame_size - before_size, instructions);
 
         break;
     }
     case AstNodeKind::If: {
         AstNodeIf* if_node = statement->as_if();
+        isize before_size = ctx->stack_frame_size;
         compile_expression(ctx, if_node->condition, instructions);
+
+        // Fake pop the result of the condition to allow the body to compile
+        // normaly
+        ctx->stack_frame_size -= sizeof(bool);
 
         Array<Inst> then_instructions;
         array_init(&then_instructions, 2, ctx->arena);
         compile_block(ctx, if_node->then_branch->as_block(),
                       &then_instructions);
 
-        isize if_false_ip = instructions->size + then_instructions.size + 1;
-        if (if_node->else_branch != nullptr) {
-            // If there is an else branch, we need to jump over it
-            // if the condition is false
-            if_false_ip += 1;
-        }
+        ctx->stack_frame_size += sizeof(bool);
+
+        isize if_false_ip = instructions->size + then_instructions.size + 3;
 
         core_assert(ctx->stack_frame_size >= (isize)sizeof(bool));
         Inst jmp = inst_jump_if_not(
             mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
             if_false_ip);
         array_push(instructions, jmp);
+        pop_stack(ctx, sizeof(bool), instructions);
         array_push_from_slice(instructions, array_to_slice(&then_instructions));
 
         if (if_node->else_branch != nullptr) {
             Array<Inst> else_instructions;
             array_init(&else_instructions, 2, ctx->arena);
+
             compile_block(ctx, if_node->else_branch->as_block(),
                           &else_instructions);
 
-            Inst jmp_else = inst_jump(if_false_ip + else_instructions.size);
+            Inst jmp_else = inst_jump(if_false_ip + else_instructions.size + 1);
             array_push(instructions, jmp_else);
+
+            ctx->stack_frame_size += sizeof(bool);
+            pop_stack(ctx, sizeof(bool), instructions);
 
             array_push_from_slice(instructions,
                                   array_to_slice(&else_instructions));
+        } else {
+            Inst jmp = inst_jump(instructions->size + 2);
+            array_push(instructions, jmp);
+
+            ctx->stack_frame_size += sizeof(bool);
+            pop_stack(ctx, sizeof(bool), instructions);
         }
+
+        core_assert(ctx->stack_frame_size == before_size);
 
         break;
     }
@@ -452,6 +484,7 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         break;
     }
     case AstNodeKind::Assignment: {
+        isize before_size = ctx->stack_frame_size;
         AstNodeAssignment* assign = statement->as_assignment();
         AstNodeIdentifier* name = assign->name->as_identifier();
         MemPtr def_ptr = {};
@@ -487,6 +520,8 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
 
         // Pop the resulting value from the stack
         pop_stack(ctx, type->size, instructions);
+
+        core_assert(ctx->stack_frame_size == before_size);
 
         break;
     }
