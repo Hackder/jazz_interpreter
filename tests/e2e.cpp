@@ -78,13 +78,13 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
 
     // NOTE(juraj): Uncomment this to see the compiled bytecode for each test
-    for (isize i = 0; i < code_unit.functions.size; i++) {
-        Slice<Inst> function = code_unit.functions[i];
-        for (isize j = 0; j < function.size; j++) {
-            std::cerr << j << ": " << function[j] << std::endl;
-        }
-        std::cerr << std::endl;
-    }
+    // for (isize i = 0; i < code_unit.functions.size; i++) {
+    //     Slice<Inst> function = code_unit.functions[i];
+    //     for (isize j = 0; j < function.size; j++) {
+    //         std::cerr << j << ": " << function[j] << std::endl;
+    //     }
+    //     std::cerr << std::endl;
+    // }
 
     Arena exec_arena = {};
     arena_init(&exec_arena, 128 * 1024);
@@ -98,9 +98,6 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     vm->stdout = stdout_file;
     vm->stderr = stderr_file;
     while (true) {
-        Inst inst = vm->code.functions[vm->fp][vm->ip];
-        // std::cerr << "Stack size: " << vm->stack.size << std::endl;
-        // std::cerr << inst << std::endl;
         bool did_work = vm_execute_inst(vm);
         if (!did_work) {
             // The top value on the stack is the exit code
@@ -597,10 +594,12 @@ TEST(e2e, NextedLoops) {
     FILE* stderr_file = tmpfile();
     const char* source = R"SOURCE(
         main :: fn() {
-            for col := 0; col < 3; col = col + 1 {
-                if col > 1 {
-                    std_println_int(col)
+            for row := 0; row < 3; row = row + 1 {
+                for col := 0; col < 3; col = col + 1 {
+                    std_print_int(col)
+                    std_print_space()
                 }
+                std_print_newline()
             }
 
             std_print_newline()

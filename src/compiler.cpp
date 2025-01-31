@@ -341,38 +341,25 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
 
         compile_expression(ctx, for_node->condition, instructions);
 
-        // Fake pop the result of the condition to allow the body to compile
-        // normaly
-        ctx->stack_frame_size -= sizeof(bool);
+        isize jump_to_end_index = instructions->size;
+        Inst jmp_to_end_temp = inst_jump_if_not(mem_ptr_invalid(), -1);
+        array_push(instructions, jmp_to_end_temp);
 
-        Array<Inst> for_body_instructions;
-        array_init(&for_body_instructions, 2, ctx->arena);
-        compile_block(ctx, for_node->then_branch->as_block(),
-                      &for_body_instructions);
+        pop_stack(ctx, sizeof(bool), instructions);
 
-        compile_statement(ctx, for_node->update, &for_body_instructions);
+        compile_block(ctx, for_node->then_branch->as_block(), instructions);
+
+        compile_statement(ctx, for_node->update, instructions);
         Inst jmp_to_condition = inst_jump(for_condition_ip);
-        array_push(&for_body_instructions, jmp_to_condition);
+        array_push(instructions, jmp_to_condition);
 
         // Push the condition result back on the stack
         ctx->stack_frame_size += sizeof(bool);
 
-        isize for_end_ip = instructions->size + for_body_instructions.size + 2;
-
         Inst jmp_to_end = inst_jump_if_not(
             mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
-            for_end_ip);
-        array_push(instructions, jmp_to_end);
-        pop_stack(ctx, sizeof(bool), instructions);
-
-        array_push_from_slice(instructions,
-                              array_to_slice(&for_body_instructions));
-
-        // We add back the condition result, because this part of the
-        // code will run if the jump fails, therefore the first
-        // pop_stack will not be executed
-        ctx->stack_frame_size += sizeof(bool);
-        pop_stack(ctx, sizeof(bool), instructions);
+            instructions->size);
+        (*instructions)[jump_to_end_index] = jmp_to_end;
 
         // Finally we pop the variables created in the `init` part
         // of the for loop
