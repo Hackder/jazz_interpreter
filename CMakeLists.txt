@@ -5,8 +5,8 @@ project(jazz)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_BUILD_TYPE Debug)
-# set(CMAKE_BUILD_TYPE Release)
+# set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -40,6 +40,8 @@ set(SOURCE_FILES
   ./src/vm.cpp
   ./src/builtin.hpp
   ./src/builtin.cpp
+  ./src/optimizer.hpp
+  ./src/optimizer.cpp
 )
 
 add_executable(
@@ -59,6 +61,7 @@ add_executable(
   ./tests/token_pos_test.cpp
   ./tests/sema_test.cpp
   ./tests/vm_test.cpp
+  ./tests/optimizer_test.cpp
   ./tests/e2e.cpp
 )
 target_compile_options(jazz_test PRIVATE)

@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 #include <iostream>
 
+const bool OPTIMIZE = true;
+
 String read_file_full(FILE* file, Arena* arena) {
     if (!file) {
         std::cerr << "Error: Could not open file" << std::endl;
@@ -75,7 +77,7 @@ u8 execute_to_end(const char* source_code_str, FILE* stdout_file,
     // }
 
     semantic_analysis(file, &arena);
-    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
+    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, OPTIMIZE, &arena);
 
     // NOTE(juraj): Uncomment this to see the compiled bytecode for each test
     // for (isize i = 0; i < code_unit.functions.size; i++) {
@@ -139,7 +141,7 @@ Slice<u8> execute_function(const char* source_code_str, isize function_pointer,
     // }
 
     semantic_analysis(file, arena);
-    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, arena);
+    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, OPTIMIZE, arena);
 
     Array<Inst> init_function = {};
     array_init(&init_function, 3, arena);

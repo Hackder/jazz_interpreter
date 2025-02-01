@@ -2,6 +2,7 @@
 #include "ast.hpp"
 #include "bytecode.hpp"
 #include "core.hpp"
+#include "optimizer.hpp"
 #include "tokenizer.hpp"
 
 struct CompilerContext {
@@ -11,6 +12,7 @@ struct CompilerContext {
     HashMap<String, isize> function_name_offset_map;
     isize stack_frame_size;
     Array<MemPtr> return_ptrs;
+    bool optimize;
 };
 
 template <typename T>
@@ -567,6 +569,9 @@ void compile_function(CompilerContext* ctx, AstNodeFunction* function,
         array_push(&instructions, inst_return());
     }
 
+    if (ctx->optimize) {
+        optimize(&instructions, ctx->arena);
+    }
     ctx->functions[function_offset] = array_to_slice(&instructions);
 }
 
@@ -582,7 +587,7 @@ void add_init_function(CompilerContext* ctx) {
     ctx->functions[0] = slice_from_inline_alloc(instructions, ctx->arena);
 }
 
-CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
+CodeUnit ast_compile_to_bytecode(Ast* ast, bool optimize, Arena* arena) {
     Array<Slice<Inst>> functions = {};
     array_init(&functions, ast->declarations.size, arena);
     array_push(&functions, Slice<Inst>{});
@@ -603,6 +608,7 @@ CodeUnit ast_compile_to_bytecode(Ast* ast, Arena* arena) {
         .function_name_offset_map = function_name_offset,
         .stack_frame_size = 0,
         .return_ptrs = return_ptrs,
+        .optimize = optimize,
     };
 
     // Do a first pass, where we register all the functions and all the

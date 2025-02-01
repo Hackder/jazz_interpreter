@@ -350,6 +350,10 @@ template <typename T> inline void array_push(Array<T>* array, T value) {
     array->size += 1;
 }
 
+template <typename T> inline void array_clear(Array<T>* array) {
+    array->size = 0;
+}
+
 template <typename T>
 inline void array_push_from_slice(Array<T>* array, Slice<T> slice) {
     for (isize i = 0; i < slice.size; i++) {
@@ -415,6 +419,16 @@ inline void array_insert(Array<T>* array, isize index, T value) {
     }
 
     array->data[index] = value;
+}
+
+template <typename T> inline bool array_contains(Array<T>* array, T value) {
+    for (isize i = 0; i < array->size; i++) {
+        if (array->data[i] == value) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /// ------------------

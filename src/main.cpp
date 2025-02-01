@@ -81,7 +81,15 @@ int main(int argc, char* argv[]) {
 
     semantic_analysis(file, &arena);
 
-    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, &arena);
+    CodeUnit code_unit = ast_compile_to_bytecode(&file->ast, true, &arena);
+
+    for (isize i = 0; i < code_unit.functions.size; i++) {
+        Slice<Inst> function = code_unit.functions[i];
+        for (isize j = 0; j < function.size; j++) {
+            std::cerr << j << ": " << function[j] << std::endl;
+        }
+        std::cerr << std::endl;
+    }
 
     Arena exec_arena = {};
     arena_init(&exec_arena, 128 * 1024);
@@ -92,8 +100,15 @@ int main(int argc, char* argv[]) {
     });
 
     VM* vm = vm_make(code_unit, 8 * 1024 * 1024, &exec_arena);
+    isize instructions_executed = 0;
+    defer({
+        std::cerr << "Instructions executed: " << instructions_executed
+                  << std::endl;
+    });
+
     while (true) {
         bool did_work = vm_execute_inst(vm);
+        instructions_executed += 1;
         if (!did_work) {
             // The top value on the stack is the exit code
             u8 exit_code = stack_pop<u8>(&vm->stack);
