@@ -375,47 +375,34 @@ void compile_statement(CompilerContext* ctx, AstNode* statement,
         isize before_size = ctx->stack_frame_size;
         compile_expression(ctx, if_node->condition, instructions);
 
-        // Fake pop the result of the condition to allow the body to compile
-        // normaly
-        ctx->stack_frame_size -= sizeof(bool);
-
-        Array<Inst> then_instructions;
-        array_init(&then_instructions, 2, ctx->arena);
-        compile_block(ctx, if_node->then_branch->as_block(),
-                      &then_instructions);
-
-        ctx->stack_frame_size += sizeof(bool);
-
-        isize if_false_ip = instructions->size + then_instructions.size + 3;
-
-        core_assert(ctx->stack_frame_size >= (isize)sizeof(bool));
         Inst jmp = inst_jump_if_not(
-            mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)),
-            if_false_ip);
+            mem_ptr_stack_rel(ctx->stack_frame_size - (isize)sizeof(bool)), -3);
         array_push(instructions, jmp);
+        isize condition_jump_index = instructions->size - 1;
         pop_stack(ctx, sizeof(bool), instructions);
-        array_push_from_slice(instructions, array_to_slice(&then_instructions));
 
+        compile_block(ctx, if_node->then_branch->as_block(), instructions);
+
+        (*instructions)[condition_jump_index].jump_if.new_ip =
+            instructions->size + 1;
+
+        // Push the result of the condition back on the stack, because the first
+        // pop is exclusive to these two branches.
+        ctx->stack_frame_size += sizeof(bool);
         if (if_node->else_branch != nullptr) {
-            Array<Inst> else_instructions;
-            array_init(&else_instructions, 2, ctx->arena);
-
-            compile_block(ctx, if_node->else_branch->as_block(),
-                          &else_instructions);
-
-            Inst jmp_else = inst_jump(if_false_ip + else_instructions.size + 1);
+            Inst jmp_else = inst_jump(-1);
             array_push(instructions, jmp_else);
+            isize else_jump_index = instructions->size - 1;
 
-            ctx->stack_frame_size += sizeof(bool);
             pop_stack(ctx, sizeof(bool), instructions);
 
-            array_push_from_slice(instructions,
-                                  array_to_slice(&else_instructions));
+            compile_block(ctx, if_node->else_branch->as_block(), instructions);
+
+            (*instructions)[else_jump_index].jump.new_ip = instructions->size;
         } else {
             Inst jmp = inst_jump(instructions->size + 2);
             array_push(instructions, jmp);
 
-            ctx->stack_frame_size += sizeof(bool);
             pop_stack(ctx, sizeof(bool), instructions);
         }
 

@@ -475,6 +475,35 @@ TEST(e2e, SimpleIfElseStatement) {
     EXPECT_EQ(ftell(stderr_file), 0);
 }
 
+TEST(e2e, NestedIfStatement) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        main :: fn() {
+            a := 42
+            b := 32
+            if a == 42 {
+                if b == 32 {
+                    std_println_int(42)
+                } else {
+                    std_println_int(11)
+                }
+            }
+        }
+    )SOURCE";
+    u8 exit_code = execute_to_end(source, stdout_file, stderr_file);
+    EXPECT_EQ(exit_code, 0);
+
+    String output = read_file_full(stdout_file, &arena);
+    EXPECT_EQ(output, string_from_cstr("42\n"));
+
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
 TEST(e2e, SimpleRecursion) {
     Arena arena;
     arena_init(&arena, 128 * 1024);
