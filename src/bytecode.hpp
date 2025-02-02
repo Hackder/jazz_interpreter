@@ -14,8 +14,8 @@ enum class MemPtrType : u8 {
 };
 
 struct MemPtr {
-    MemPtrType type : 3;
-    isize mem_offset : 61;
+    MemPtrType type;
+    isize mem_offset;
 };
 
 inline MemPtr mem_ptr_invalid() {
