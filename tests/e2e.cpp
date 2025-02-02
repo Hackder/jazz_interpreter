@@ -371,6 +371,31 @@ TEST(e2e, SimpleAdditionReturnSelfAssignment) {
     EXPECT_EQ(ftell(stderr_file), 0);
 }
 
+TEST(e2e, MediumIntBinaryExpression) {
+    Arena arena;
+    arena_init(&arena, 128 * 1024);
+    defer(arena_free(&arena));
+
+    FILE* stdout_file = tmpfile();
+    FILE* stderr_file = tmpfile();
+    const char* source = R"SOURCE(
+        calc :: fn() {
+            a := 3 + 2 * (3 - 1) * 3 * (7 + 16)
+            return a
+        }
+
+        main :: fn() {
+            a := calc()
+        }
+    )SOURCE";
+    Slice<u8> result = execute_function(source, 1, sizeof(isize), stdout_file,
+                                        stderr_file, &arena);
+    isize value = *slice_cast_raw<isize>(result);
+    EXPECT_EQ(value, 279);
+    EXPECT_EQ(ftell(stdout_file), 0);
+    EXPECT_EQ(ftell(stderr_file), 0);
+}
+
 TEST(e2e, ComplexIntBinaryExpression) {
     Arena arena;
     arena_init(&arena, 128 * 1024);

@@ -4,6 +4,7 @@
 #include "core.hpp"
 #include "optimizer.hpp"
 #include "tokenizer.hpp"
+#include <iostream>
 
 struct CompilerContext {
     Arena* arena;
@@ -85,6 +86,29 @@ void pop_stack(CompilerContext* ctx, isize size, Array<Inst>* instructions) {
 void compile_block(CompilerContext* ctx, AstNodeBlock* block,
                    Array<Inst>* instructions);
 
+void define_literal(CompilerContext* ctx, AstNodeLiteral* literal) {
+    Type* type = type_set_get_single(literal->type_set);
+    switch (literal->literal_kind) {
+    case AstLiteralKind::Integer: {
+        core_assert(type->size == sizeof(i64));
+        i64 value = string_parse_to_i64(literal->token.source);
+        isize offset = ctx_push_static_data(ctx, value);
+        literal->static_data_ptr = mem_ptr_static_data(offset);
+        break;
+    }
+    case AstLiteralKind::Float:
+    case AstLiteralKind::String:
+        break;
+    case AstLiteralKind::Bool: {
+        core_assert(type->size == sizeof(bool));
+        bool value = string_parse_to_bool(literal->token.source);
+        isize offset = ctx_push_static_data(ctx, value);
+        literal->static_data_ptr = mem_ptr_static_data(offset);
+        break;
+    }
+    }
+}
+
 void compile_expression(CompilerContext* ctx, AstNode* expression,
                         Array<Inst>* instructions) {
     switch (expression->kind) {
@@ -155,12 +179,87 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         Type* type = type_set_get_single(binary->type_set);
 
         isize before_left = ctx->stack_frame_size;
+        MemPtr left_ptr = mem_ptr_invalid();
         Type* left_type = type_set_get_single(binary->left->type_set);
-        compile_expression(ctx, binary->left, instructions);
+        switch (binary->left->kind) {
+        case AstNodeKind::Literal: {
+            AstNodeLiteral* literal = binary->left->as_literal();
+            define_literal(ctx, literal);
+            left_ptr = literal->static_data_ptr;
+            break;
+        }
+        case AstNodeKind::Identifier: {
+            AstNodeIdentifier* ident = binary->left->as_identifier();
+            AstNode* def = ident->def;
+            switch (def->kind) {
+            case AstNodeKind::Declaration: {
+                AstNodeDeclaration* decl = def->as_declaration();
+                left_ptr = decl->name->ptr;
+                break;
+            }
+            case AstNodeKind::Parameter: {
+                AstNodeParameter* param = def->as_parameter();
+                left_ptr = param->name->ptr;
+                break;
+            }
+            default: {
+                core_assert(false);
+                break;
+            }
+            }
+            break;
+        }
+        default: {
+            compile_expression(ctx, binary->left, instructions);
+            left_ptr = mem_ptr_stack_rel(before_left);
+            core_assert(ctx->stack_frame_size > before_left);
+            core_assert(ctx->stack_frame_size - before_left == left_type->size);
+            break;
+        }
+        }
+        core_assert(left_ptr.type != MemPtrType::Invalid);
 
         isize before_right = ctx->stack_frame_size;
+        MemPtr right_ptr = mem_ptr_invalid();
         Type* right_type = type_set_get_single(binary->right->type_set);
-        compile_expression(ctx, binary->right, instructions);
+        switch (binary->right->kind) {
+        case AstNodeKind::Literal: {
+            AstNodeLiteral* literal = binary->right->as_literal();
+            define_literal(ctx, literal);
+            right_ptr = literal->static_data_ptr;
+            break;
+        }
+        case AstNodeKind::Identifier: {
+            AstNodeIdentifier* ident = binary->right->as_identifier();
+            AstNode* def = ident->def;
+            switch (def->kind) {
+            case AstNodeKind::Declaration: {
+                AstNodeDeclaration* decl = def->as_declaration();
+                right_ptr = decl->name->ptr;
+                break;
+            }
+            case AstNodeKind::Parameter: {
+                AstNodeParameter* param = def->as_parameter();
+                right_ptr = param->name->ptr;
+                break;
+            }
+            default: {
+                core_assert(false);
+                break;
+            }
+            }
+            break;
+        }
+        default: {
+            compile_expression(ctx, binary->right, instructions);
+            right_ptr = mem_ptr_stack_rel(before_right);
+            core_assert(ctx->stack_frame_size > before_right);
+            core_assert(ctx->stack_frame_size - before_right ==
+                        right_type->size);
+            break;
+        }
+        }
+        core_assert(right_ptr.type != MemPtrType::Invalid);
 
         core_assert(left_type->kind == right_type->kind);
 
@@ -233,21 +332,23 @@ void compile_expression(CompilerContext* ctx, AstNode* expression,
         }
         }
 
+        isize space_on_stack = ctx->stack_frame_size - before_left;
+        core_assert(space_on_stack >= 0);
+        isize extra_stack_space_from_op_args = space_on_stack - type->size;
+
+        if (extra_stack_space_from_op_args < 0) {
+            push_stack(ctx, -extra_stack_space_from_op_args, instructions);
+        }
+
         Inst binary_op = inst_binary_op(op, mem_ptr_stack_rel(before_left),
-                                        mem_ptr_stack_rel(before_left),
-                                        mem_ptr_stack_rel(before_right));
+                                        left_ptr, right_ptr);
         array_push(instructions, binary_op);
 
-        isize extra_stack_space_from_op_args =
-            left_type->size + right_type->size - type->size;
+        if (extra_stack_space_from_op_args > 0) {
+            pop_stack(ctx, extra_stack_space_from_op_args, instructions);
+        }
 
-        // NOTE(juraj): This doesn't handle the case, where the result
-        // is larger than the two operands combined. There is no way
-        // this can happen currently. But if you came across this in the
-        // future, there is no reason why this couldn't be implemented.
-        core_assert(extra_stack_space_from_op_args >= 0);
-
-        pop_stack(ctx, extra_stack_space_from_op_args, instructions);
+        core_assert(ctx->stack_frame_size == before_left + type->size);
 
         break;
     }
